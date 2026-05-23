@@ -470,6 +470,12 @@
 .notepad-editor p {
   margin: 0;
 }
+.notepad-editor p + ul,
+.notepad-editor p + ol,
+.notepad-editor ul + p,
+.notepad-editor ol + p {
+  margin: 0;
+}
 .notepad-editor strong {
   font-weight: 700;
 }
@@ -487,7 +493,7 @@
 .notepad-editor h3 { font-size: 1.05em; margin: 0.2em 0 0.1em; }
 .notepad-editor ul,
 .notepad-editor ol {
-  padding-left: 1.6em;
+  padding-left: 2em;
   margin: 0;
 }
 .notepad-editor ol {
@@ -498,8 +504,8 @@
 }
 .notepad-editor li {
   margin: 0;
+  padding: 0;
   display: list-item;
-  padding-left: 0.2em;
 }
 .notepad-editor li::marker {
   color: var(--ink-color);
