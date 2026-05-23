@@ -29,6 +29,7 @@ export const notesRouter = createTRPCRouter({
       z.object({
         title: z.string().optional().default("Untitled"),
         content: z.string().optional().default(""),
+        folderId: z.string().nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -37,6 +38,7 @@ export const notesRouter = createTRPCRouter({
           title: input.title,
           content: input.content,
           userId: ctx.session.user.id,
+          folderId: input.folderId ?? null,
         },
       });
     }),

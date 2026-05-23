@@ -40,6 +40,7 @@ interface FolderItemProps {
   onDelete: () => void;
   onRename: (name: string) => void;
   onStartEdit: () => void;
+  onNewNote?: () => void;
   /** Render prop to wrap each note item with a draggable wrapper */
   renderNoteItem?: (note: Note, children: React.ReactNode) => React.ReactNode;
 }
@@ -57,6 +58,7 @@ export function FolderItem({
   onDelete,
   onRename,
   onStartEdit,
+  onNewNote,
   renderNoteItem,
 }: FolderItemProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -208,9 +210,13 @@ export function FolderItem({
       {isExpanded && (
         <div className="ml-4 border-l border-white/10 pl-2 space-y-1 py-1">
           {notes.length === 0 ? (
-            <div className="px-3 py-2 text-[11px] text-[#c8b89a] opacity-50 italic">
-              No notes in this folder
-            </div>
+            <button
+              onClick={onNewNote}
+              className="w-full px-3 py-2 text-[11px] text-[#c8b89a] opacity-60 hover:opacity-100 italic text-left transition-opacity flex items-center gap-1.5"
+            >
+              <span>+</span>
+              <span>Add a note</span>
+            </button>
           ) : (
             notes.map((note) => {
               const noteContent = (

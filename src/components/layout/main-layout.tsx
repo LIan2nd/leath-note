@@ -355,6 +355,10 @@ function AuthenticatedLayout() {
     createNoteMutation.mutate({ title: "Untitled", content: "" });
   };
 
+  const handleNewNoteInFolder = (folderId: string) => {
+    createNoteMutation.mutate({ title: "Untitled", content: "", folderId });
+  };
+
   const handleDeleteNote = (id: string) => {
     setDeleteConfirmId(id);
   };
@@ -456,6 +460,7 @@ function AuthenticatedLayout() {
           if (!createFolderMutation.isPending) createFolderMutation.mutate({});
         }}
         isCreatingFolder={createFolderMutation.isPending}
+        onNewNoteInFolder={handleNewNoteInFolder}
       />
 
       <main

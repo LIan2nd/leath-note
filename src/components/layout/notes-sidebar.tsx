@@ -70,6 +70,7 @@ interface NotesSidebarProps {
   onMoveToFolder?: (noteId: string, folderId: string | null) => void;
   onNewFolder?: () => void;
   isCreatingFolder?: boolean;
+  onNewNoteInFolder?: (folderId: string) => void;
 }
 
 // ─── DraggableNoteItem ───────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ export function NotesSidebar({
   onMoveToFolder,
   onNewFolder,
   isCreatingFolder = false,
+  onNewNoteInFolder,
 }: NotesSidebarProps) {
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [activeNote, setActiveNote] = React.useState<Note | null>(null);
@@ -355,6 +357,7 @@ export function NotesSidebar({
                       onDeleteFolder={handleDeleteFolderRequest}
                       onRenameFolder={onRenameFolder}
                       onStartEditFolder={onStartEditFolder}
+                      onNewNoteInFolder={onNewNoteInFolder}
                       renderNoteItem={(note, children) => (
                         <DraggableNoteItem key={note.id} note={note}>
                           {children}
