@@ -169,6 +169,8 @@ export function NotepadContainer({
 }: NotepadContainerProps) {
   // Track the last noteId to detect note switches
   const lastNoteIdRef = React.useRef<string | null>(null);
+  const contentRef = React.useRef(content);
+  contentRef.current = content;
 
   const editor = useEditor({
     extensions: [
@@ -192,18 +194,16 @@ export function NotepadContainer({
     },
   });
 
-  // When noteId changes (user switches notes), update editor content
+  // Only sync content to editor when noteId changes (user switches notes)
+  // Do NOT react to content prop changes — the editor is the source of truth while editing
   React.useEffect(() => {
     if (!editor) return;
     if (noteId !== lastNoteIdRef.current) {
       lastNoteIdRef.current = noteId ?? null;
-      const storage = editor.storage as unknown as Record<string, { getMarkdown: () => string }>;
-      const currentMd = storage.markdown!.getMarkdown();
-      if (currentMd !== content) {
-        editor.commands.setContent(content || "");
-      }
+      // Use the latest content prop value when switching notes
+      editor.commands.setContent(contentRef.current || "");
     }
-  }, [noteId, content, editor]);
+  }, [noteId, editor]);
 
   if (!noteId) {
     return (
