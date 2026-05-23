@@ -269,10 +269,9 @@ export function NotesSidebar({
         className={cn(
           "leather-background sidebar-leather fixed left-0 top-0 z-40 flex h-full flex-col",
           "transition-all duration-400 ease-in-out",
-          // When open: clip overflow (vertical scroll inside); when collapsed: allow flyouts to escape
-          isOpen ? "w-72 overflow-hidden" : "w-0 md:w-16 overflow-visible",
-          // Mobile backdrop
-          isOpen && "shadow-2xl md:shadow-none"
+          isOpen
+            ? "w-72 overflow-hidden shadow-2xl md:shadow-none"
+            : "w-0 overflow-hidden md:w-16 md:overflow-visible",
         )}
       >
 

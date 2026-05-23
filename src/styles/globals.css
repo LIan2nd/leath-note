@@ -340,7 +340,7 @@
   color: #d4c5a9;
 }
 
-/* Folder flyout panel — shown when hovering folder icon in collapsed sidebar */
+/* Folder flyout panel — shown when clicking folder icon in collapsed sidebar */
 .folder-flyout-trigger {
   position: relative;
 }
@@ -359,7 +359,12 @@
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: opacity 0.15s ease;
+  animation: flyout-in 0.15s ease;
+}
+
+@keyframes flyout-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .folder-flyout-header {
@@ -403,10 +408,12 @@
   color: #d4c5a9;
 }
 
-/* Hide flyout on mobile — sidebar is full overlay there anyway */
+/* On mobile, flyout appears below the trigger instead of to the right */
 @media (max-width: 768px) {
   .folder-flyout {
-    display: none;
+    left: 0;
+    top: calc(100% + 4px);
+    width: 240px;
   }
 }
 
