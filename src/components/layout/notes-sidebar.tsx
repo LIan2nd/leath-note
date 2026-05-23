@@ -269,9 +269,20 @@ export function NotesSidebar({
         className={cn(
           "leather-background sidebar-leather fixed left-0 top-0 z-40 flex h-full flex-col overflow-hidden",
           "transition-all duration-400 ease-in-out",
-          isOpen ? "w-72" : "w-0 md:w-16"
+          // Mobile: full overlay when open, hidden when closed
+          isOpen ? "w-72" : "w-0 md:w-16",
+          // Mobile backdrop
+          isOpen && "shadow-2xl md:shadow-none"
         )}
       >
+
+        {/* Mobile close overlay */}
+        {isOpen && (
+          <div
+            className="fixed inset-0 z-[-1] bg-black/40 md:hidden"
+            onClick={onToggle}
+          />
+        )}
         {/* Sidebar Header */}
         <div
           className={cn(
@@ -458,7 +469,7 @@ export function NotesSidebar({
         <Separator className="bg-white/10" />
         <div
           className={cn(
-            "p-3",
+            "p-3 shrink-0",
             isOpen
               ? "flex items-center justify-between"
               : "flex flex-col items-center gap-2"
@@ -469,7 +480,10 @@ export function NotesSidebar({
               Where thoughts become words ✍️
             </span>
           )}
-          <div className="flex items-center gap-1">
+          <div className={cn(
+            "flex gap-1",
+            isOpen ? "items-center" : "flex-col items-center"
+          )}>
             <button
               onClick={onOpenProfile}
               className="btn-skeuomorphic p-2"

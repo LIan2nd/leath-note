@@ -200,16 +200,16 @@ export function NotepadContainer({
 
   if (!noteId) {
     return (
-      <div className="notepad-with-toolbar">
+      <div className="notepad-with-toolbar w-full">
         <div
           className={cn(
-            "paper-container relative mx-auto flex min-h-[800px] w-full max-w-2xl items-center justify-center overflow-hidden",
+            "paper-container relative mx-auto flex min-h-[60vh] md:min-h-[800px] w-full max-w-2xl items-center justify-center overflow-hidden",
             className
           )}
           style={{ backgroundColor: "var(--paper-bg)" }}
         >
-          <div className="text-center">
-            <p className="typewriter-text text-xl opacity-50">
+          <div className="text-center px-4">
+            <p className="typewriter-text text-base md:text-xl opacity-50">
               Select a note or create a new one
             </p>
           </div>
@@ -219,33 +219,33 @@ export function NotepadContainer({
   }
 
   return (
-    <div className="notepad-with-toolbar">
+    <div className="notepad-with-toolbar w-full">
       {/* Toolbar — sits to the right of the paper like tools on a desk */}
       <EditorToolbar editor={editor} />
 
       <div
         className={cn(
-          "paper-container relative mx-auto min-h-[800px] w-full max-w-2xl overflow-hidden",
+          "paper-container relative mx-auto min-h-[60vh] md:min-h-[800px] w-full max-w-2xl overflow-hidden",
           className
         )}
         style={{ backgroundColor: "var(--paper-bg)" }}
       >
         {/* Saving indicator */}
         {isSaving && (
-          <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2 rounded bg-white/80 px-3 py-1 text-sm shadow">
-            <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+          <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2 rounded bg-white/80 px-2 py-1 text-xs md:text-sm shadow">
+            <Loader2 className="h-3 w-3 md:h-4 md:w-4 animate-spin text-gray-500" />
             <span className="text-gray-600">Saving...</span>
           </div>
         )}
 
-        {/* Red margin line */}
-        <div className="absolute left-[59px] top-0 h-full w-[2px] bg-[#e8b4b4] z-1" />
+        {/* Red margin line — hidden on very small screens */}
+        <div className="absolute left-[40px] sm:left-[59px] top-0 h-full w-[2px] bg-[#e8b4b4] z-1" />
 
         {/* Paper header area */}
-        <div className="relative pt-5 pb-4" style={{ backgroundColor: "var(--paper-bg)" }}>
+        <div className="relative pt-4 pb-3 md:pt-5 md:pb-4" style={{ backgroundColor: "var(--paper-bg)" }}>
           {createdAt && (
-            <div className="mb-1 text-right pr-5">
-              <span className="typewriter-text text-xs text-[#8a8070]">
+            <div className="mb-1 text-right pr-3 md:pr-5">
+              <span className="typewriter-text text-[10px] md:text-xs text-[#8a8070]">
                 Date: {formatDate(createdAt)}
               </span>
             </div>
@@ -254,10 +254,10 @@ export function NotepadContainer({
         </div>
 
         {/* Full-width blue separator line */}
-        <div className="h-[2px] w-full bg-[#9fcae3] mb-4" />
+        <div className="h-[2px] w-full bg-[#9fcae3] mb-3 md:mb-4" />
 
         {/* WYSIWYG editor content area */}
-        <div className="notepad-body relative min-h-[650px]">
+        <div className="notepad-body relative min-h-[50vh] md:min-h-[650px]">
           <EditorContent editor={editor} />
         </div>
 

@@ -468,11 +468,11 @@ function AuthenticatedLayout() {
 
       <main
         className={cn(
-          "min-h-screen p-4 transition-[margin] duration-500 ease-in-out md:p-8",
+          "min-h-screen p-2 pt-14 transition-[margin] duration-500 ease-in-out sm:p-4 md:p-8 md:pt-8",
           sidebarOpen ? "md:ml-72" : "md:ml-16"
         )}
       >
-        <div className="flex min-h-[calc(100vh-4rem)] items-start justify-center pt-8">
+        <div className="flex min-h-[calc(100vh-4rem)] items-start justify-center md:pt-8">
           <NotepadContainer
             noteId={selectedNoteId}
             title={editTitle}
