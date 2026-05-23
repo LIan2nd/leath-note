@@ -111,8 +111,8 @@ function AuthenticatedLayout() {
       utils.notes.list.setData(undefined, (old) =>
         old ? [newNote, ...old] : [newNote]
       );
-      // Switch to the new note — editor sync will handle setting title/content
-      handleSelectNote(newNote.id);
+      // Switch to the new note — set content directly since cache hasn't re-rendered yet
+      handleSelectNoteWithData(newNote.id, newNote.title, newNote.content);
       void utils.notes.list.invalidate();
     },
   });
@@ -311,26 +311,15 @@ function AuthenticatedLayout() {
     },
   });
 
-  // Sync editor when selected note changes — instant from cache
-  React.useEffect(() => {
-    if (selectedNote) {
-      setEditTitle(selectedNote.title);
-      setEditContent(selectedNote.content);
-      savedTitleRef.current = selectedNote.title;
-      savedContentRef.current = selectedNote.content;
-    } else {
-      setEditTitle("");
-      setEditContent("");
-      savedTitleRef.current = "";
-      savedContentRef.current = "";
-    }
-  }, [selectedNoteId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // ^ intentionally depend on selectedNoteId (not selectedNote) to avoid re-syncing on cache updates
-
   // Auto-select first note on load
   React.useEffect(() => {
     if (!selectedNoteId && notes && notes.length > 0) {
-      setSelectedNoteId(notes[0]!.id);
+      const firstNote = notes[0]!;
+      setEditTitle(firstNote.title);
+      setEditContent(firstNote.content);
+      savedTitleRef.current = firstNote.title;
+      savedContentRef.current = firstNote.content;
+      setSelectedNoteId(firstNote.id);
     }
   }, [notes, selectedNoteId]);
 
@@ -377,7 +366,46 @@ function AuthenticatedLayout() {
       }
     }
 
-    // Switch to new note — sync effect will populate editor from cache
+    // Switch to new note — set content synchronously so NotepadContainer
+    // mounts with the correct content (key={noteId} causes remount)
+    const nextNote = notes?.find((n) => n.id === id);
+    if (nextNote) {
+      setEditTitle(nextNote.title);
+      setEditContent(nextNote.content);
+      savedTitleRef.current = nextNote.title;
+      savedContentRef.current = nextNote.content;
+    } else {
+      setEditTitle("");
+      setEditContent("");
+      savedTitleRef.current = "";
+      savedContentRef.current = "";
+    }
+    setSelectedNoteId(id);
+  };
+
+  /** Switch to a note when we already have its data (e.g. from mutation response) */
+  const handleSelectNoteWithData = (id: string, noteTitle: string, noteContent: string) => {
+    if (id === selectedNoteId) return;
+
+    // Save current note if needed
+    if (selectedNoteId) {
+      const titleChanged = editTitle !== savedTitleRef.current;
+      const contentChanged = editContent !== savedContentRef.current;
+      if (titleChanged || contentChanged) {
+        savedTitleRef.current = editTitle;
+        savedContentRef.current = editContent;
+        updateNoteMutation.mutate({
+          id: selectedNoteId,
+          title: editTitle,
+          content: editContent,
+        });
+      }
+    }
+
+    setEditTitle(noteTitle);
+    setEditContent(noteContent);
+    savedTitleRef.current = noteTitle;
+    savedContentRef.current = noteContent;
     setSelectedNoteId(id);
   };
 
