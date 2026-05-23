@@ -352,10 +352,12 @@ function AuthenticatedLayout() {
   };
 
   const handleNewNote = () => {
+    if (createNoteMutation.isPending) return;
     createNoteMutation.mutate({ title: "Untitled", content: "" });
   };
 
   const handleNewNoteInFolder = (folderId: string) => {
+    if (createNoteMutation.isPending) return;
     createNoteMutation.mutate({ title: "Untitled", content: "", folderId });
   };
 
@@ -428,6 +430,7 @@ function AuthenticatedLayout() {
         selectedNoteId={selectedNoteId}
         onSelectNote={handleSelectNote}
         onNewNote={handleNewNote}
+        isCreatingNote={createNoteMutation.isPending}
         onDeleteNote={handleDeleteNote}
         onOpenProfile={() => setProfileOpen(true)}
         notes={notes ?? []}

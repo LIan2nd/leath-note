@@ -55,6 +55,7 @@ interface NotesSidebarProps {
   selectedNoteId?: string | null;
   onSelectNote: (id: string) => void;
   onNewNote: () => void;
+  isCreatingNote?: boolean;
   onDeleteNote: (id: string) => void;
   onOpenProfile: () => void;
   notes: Note[];
@@ -155,6 +156,7 @@ export function NotesSidebar({
   selectedNoteId,
   onSelectNote,
   onNewNote,
+  isCreatingNote = false,
   onDeleteNote,
   onOpenProfile,
   notes,
@@ -301,13 +303,14 @@ export function NotesSidebar({
         <div className={cn("p-3", !isOpen && "flex flex-col items-center gap-2")}>
           <Button
             onClick={onNewNote}
+            disabled={isCreatingNote}
             className={cn(
               "btn-skeuomorphic gap-2",
               isOpen ? "w-full" : "w-auto p-2"
             )}
           >
-            <Plus className="h-4 w-4" />
-            {isOpen && <span>New Note</span>}
+            <Plus className={cn("h-4 w-4", isCreatingNote && "animate-pulse")} />
+            {isOpen && <span>{isCreatingNote ? "Creating..." : "New Note"}</span>}
           </Button>
           {onNewFolder && (
             <Button
