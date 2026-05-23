@@ -169,8 +169,8 @@ export function NotepadContainer({
 }: NotepadContainerProps) {
   // Track the last noteId to detect note switches
   const lastNoteIdRef = React.useRef<string | null>(null);
-  const contentRef = React.useRef(content);
-  contentRef.current = content;
+  // Flag to suppress onUpdate during programmatic setContent
+  const suppressUpdateRef = React.useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -188,22 +188,25 @@ export function NotepadContainer({
       },
     },
     onUpdate: ({ editor: e }) => {
+      if (suppressUpdateRef.current) return;
       const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
       const md = storage.markdown!.getMarkdown();
       onContentChange(md);
     },
   });
 
-  // Only sync content to editor when noteId changes (user switches notes)
-  // Do NOT react to content prop changes — the editor is the source of truth while editing
+  // Sync content to editor ONLY when noteId changes (user switches notes)
+  // content is in deps so we get the correct value, but we only act when noteId differs
   React.useEffect(() => {
     if (!editor) return;
     if (noteId !== lastNoteIdRef.current) {
       lastNoteIdRef.current = noteId ?? null;
-      // Use the latest content prop value when switching notes
-      editor.commands.setContent(contentRef.current || "");
+      suppressUpdateRef.current = true;
+      editor.commands.setContent(content || "");
+      suppressUpdateRef.current = false;
     }
-  }, [noteId, editor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteId, editor, content]);
 
   if (!noteId) {
     return (
