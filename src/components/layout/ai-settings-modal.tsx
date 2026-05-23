@@ -68,7 +68,7 @@ export function AiSettingsModal({
     return () => window.removeEventListener("keydown", handleKey);
   }, [isOpen, onClose]);
 
-  const provider = getProvider(draft.providerId);
+  const provider = draft.providerId ? getProvider(draft.providerId) : null;
 
   const handleProviderChange = (id: ProviderId) => {
     const p = getProvider(id);
@@ -152,6 +152,7 @@ export function AiSettingsModal({
           </div>
 
           {/* Model */}
+          {provider && (
           <div className="space-y-2">
             <div className="flex items-center gap-1">
               <label className="settings-label">Model</label>
@@ -176,6 +177,7 @@ export function AiSettingsModal({
               className="settings-input w-full"
             />
           </div>
+          )}
 
           {/* Ollama host */}
           {draft.providerId === "ollama" && (
@@ -198,7 +200,7 @@ export function AiSettingsModal({
           )}
 
           {/* Custom Base URL (for Sumopod or other OpenAI-compatible endpoints) */}
-          {provider.requiresBaseUrl && (
+          {provider?.requiresBaseUrl && (
             <div className="space-y-2">
               <label className="settings-label">API Base URL</label>
               <input
@@ -215,7 +217,7 @@ export function AiSettingsModal({
           )}
 
           {/* API Key */}
-          {provider.requiresApiKey && (
+          {provider?.requiresApiKey && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">

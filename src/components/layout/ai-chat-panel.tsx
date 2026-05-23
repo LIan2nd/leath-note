@@ -7,6 +7,7 @@ import {
   loadAiSettings,
   saveAiSettings,
   getProvider,
+  isAiConfigured,
   type AiSettings,
 } from "~/lib/ai-providers";
 import { AiSettingsModal } from "./ai-settings-modal";
@@ -60,7 +61,7 @@ export function AiChatPanel({
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const provider = getProvider(aiSettings.providerId);
+  const provider = aiSettings.providerId ? getProvider(aiSettings.providerId) : null;
   const utils = api.useUtils();
 
   // Load chat history from DB when noteId changes
@@ -165,6 +166,11 @@ export function AiChatPanel({
 
     if (provider.requiresApiKey && !aiSettings.apiKey) {
       setError(`${provider.label} requires an API key. Click ⚙️ to configure.`);
+      return;
+    }
+
+    if (needsSetup) {
+      setError("Please configure your AI provider first. Click ⚙️ to set up.");
       return;
     }
 
@@ -329,7 +335,7 @@ export function AiChatPanel({
     }
   };
 
-  const needsApiKey = provider.requiresApiKey && !aiSettings.apiKey;
+  const needsSetup = !isAiConfigured(aiSettings);
   const hasActiveStream = noteId ? activeStreams.has(noteId) : false;
 
   return (
@@ -385,7 +391,7 @@ export function AiChatPanel({
               onClick={() => setSettingsOpen(true)}
               className={cn(
                 "btn-skeuomorphic p-1.5",
-                needsApiKey && "ring-1 ring-amber-500/60"
+                needsSetup && "ring-1 ring-amber-500/60"
               )}
               title="AI Settings"
               aria-label="Open AI settings"
@@ -402,15 +408,15 @@ export function AiChatPanel({
           </div>
         </div>
 
-        {needsApiKey && (
+        {needsSetup && (
           <button
             onClick={() => setSettingsOpen(true)}
             className="chat-warning-banner flex items-center gap-2 px-4 py-2 text-left text-xs w-full"
           >
-            <span>⚠️</span>
+            <span>⚙️</span>
             <span>
-              <strong>{provider.label}</strong> needs an API key.{" "}
-              <span className="underline">Click to configure →</span>
+              AI is not configured yet.{" "}
+              <span className="underline">Click here to set up your AI provider →</span>
             </span>
           </button>
         )}
@@ -423,23 +429,40 @@ export function AiChatPanel({
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 opacity-60">
-              <Sparkles className="h-8 w-8 text-[#c8b89a]" />
-              <p className="typewriter-text text-center text-sm text-[#c8b89a]">
-                Ask me anything about your note, or let me help you write.
-              </p>
-              <div className="flex flex-col gap-1.5 w-full mt-2">
-                {["Summarize this note", "Improve my writing", "What are the key points?"].map(
-                  (suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => { setInput(suggestion); inputRef.current?.focus(); }}
-                      className="chat-suggestion text-left text-xs px-3 py-2"
-                    >
-                      {suggestion}
-                    </button>
-                  )
-                )}
-              </div>
+              {needsSetup ? (
+                <>
+                  <Settings className="h-8 w-8 text-[#c8b89a]" />
+                  <p className="typewriter-text text-center text-sm text-[#c8b89a]">
+                    Set up your AI provider to start chatting.
+                  </p>
+                  <button
+                    onClick={() => setSettingsOpen(true)}
+                    className="btn-skeuomorphic px-4 py-2 text-xs mt-2"
+                  >
+                    ⚙️ Configure AI Provider
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-8 w-8 text-[#c8b89a]" />
+                  <p className="typewriter-text text-center text-sm text-[#c8b89a]">
+                    Ask me anything about your note, or let me help you write.
+                  </p>
+                  <div className="flex flex-col gap-1.5 w-full mt-2">
+                    {["Summarize this note", "Improve my writing", "What are the key points?"].map(
+                      (suggestion) => (
+                        <button
+                          key={suggestion}
+                          onClick={() => { setInput(suggestion); inputRef.current?.focus(); }}
+                          className="chat-suggestion text-left text-xs px-3 py-2"
+                        >
+                          {suggestion}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             messages.map((msg, i) => (
@@ -485,14 +508,14 @@ export function AiChatPanel({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder={
-                needsApiKey
-                  ? "Configure API key first..."
+                needsSetup
+                  ? "Set up AI provider first..."
                   : hasActiveStream
                     ? "Waiting for response..."
                     : "Ask about your note... (Enter to send)"
               }
               rows={1}
-              disabled={hasActiveStream || needsApiKey || !noteId}
+              disabled={hasActiveStream || needsSetup || !noteId}
               className="chat-textarea flex-1 resize-none overflow-hidden"
               style={{ scrollbarWidth: "none" }}
             />
@@ -508,7 +531,7 @@ export function AiChatPanel({
             ) : (
               <button
                 onClick={() => void handleSend()}
-                disabled={!input.trim() || needsApiKey || !noteId}
+                disabled={!input.trim() || needsSetup || !noteId}
                 className="btn-skeuomorphic shrink-0 p-2 disabled:opacity-40"
                 aria-label="Send message"
               >
@@ -517,7 +540,7 @@ export function AiChatPanel({
             )}
           </div>
           <p className="mt-1.5 text-[10px] text-[#c8b89a] opacity-40 text-center" suppressHydrationWarning>
-            {hydrated ? `${provider.label} · ${aiSettings.model} · Shift+Enter for new line` : "Shift+Enter for new line"}
+            {hydrated && provider ? `${provider.label} · ${aiSettings.model} · Shift+Enter for new line` : "Shift+Enter for new line"}
           </p>
         </div>
       </div>

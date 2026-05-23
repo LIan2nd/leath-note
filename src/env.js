@@ -18,8 +18,8 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
-    OLLAMA_HOST: z.string().url().optional().default("http://localhost:11434"),
-    OLLAMA_MODEL: z.string().optional().default("qwen3.5:0.8b"),
+    OLLAMA_HOST: z.string().url().optional(),
+    OLLAMA_MODEL: z.string().optional(),
   },
 
   /**

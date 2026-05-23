@@ -123,7 +123,7 @@ export const PROVIDERS: ProviderConfig[] = [
   },
 ];
 
-export const DEFAULT_PROVIDER_ID: ProviderId = "ollama";
+export const DEFAULT_PROVIDER_ID: ProviderId | null = null;
 
 export function getProvider(id: ProviderId): ProviderConfig {
   return PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0]!;
@@ -131,7 +131,7 @@ export function getProvider(id: ProviderId): ProviderConfig {
 
 // Shape stored in localStorage
 export interface AiSettings {
-  providerId: ProviderId;
+  providerId: ProviderId | null;
   model: string;
   apiKey: string;
   ollamaHost: string;
@@ -144,14 +144,14 @@ export interface AiSettings {
  */
 function getEnvDefaults(): AiSettings {
   const providerId =
-    (process.env.NEXT_PUBLIC_AI_PROVIDER as ProviderId | undefined) ?? "ollama";
-  const provider = getProvider(providerId);
+    (process.env.NEXT_PUBLIC_AI_PROVIDER as ProviderId | undefined) ?? null;
+  const provider = providerId ? getProvider(providerId) : null;
   return {
     providerId,
-    model: process.env.NEXT_PUBLIC_AI_MODEL ?? provider.defaultModel,
+    model: process.env.NEXT_PUBLIC_AI_MODEL ?? provider?.defaultModel ?? "",
     apiKey: process.env.NEXT_PUBLIC_AI_API_KEY ?? "",
     ollamaHost: process.env.NEXT_PUBLIC_OLLAMA_HOST ?? "http://localhost:11434",
-    customBaseUrl: process.env.NEXT_PUBLIC_AI_BASE_URL ?? provider.defaultBaseUrl ?? "",
+    customBaseUrl: process.env.NEXT_PUBLIC_AI_BASE_URL ?? provider?.defaultBaseUrl ?? "",
   };
 }
 
@@ -190,4 +190,16 @@ export function saveAiSettings(settings: AiSettings): void {
 export function isUsingEnvDefaults(): boolean {
   if (typeof window === "undefined") return true;
   return localStorage.getItem(STORAGE_KEY) === null;
+}
+
+/**
+ * Returns true if AI is properly configured and ready to use.
+ * - A provider must be selected
+ * - If the provider requires an API key, it must be set
+ */
+export function isAiConfigured(settings: AiSettings): boolean {
+  if (!settings.providerId) return false;
+  const provider = getProvider(settings.providerId);
+  if (provider.requiresApiKey && !settings.apiKey) return false;
+  return true;
 }
