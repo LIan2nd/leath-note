@@ -167,10 +167,8 @@ export function NotepadContainer({
   authorName,
   className,
 }: NotepadContainerProps) {
-  // Track the last noteId to detect note switches
-  const lastNoteIdRef = React.useRef<string | null>(null);
-  // Flag to suppress onUpdate during programmatic setContent
-  const suppressUpdateRef = React.useRef(false);
+  // With `key={noteId}` set by parent, this component remounts on note switch.
+  // So the editor is always created with the correct initial content — no sync needed.
 
   const editor = useEditor({
     extensions: [
@@ -188,25 +186,11 @@ export function NotepadContainer({
       },
     },
     onUpdate: ({ editor: e }) => {
-      if (suppressUpdateRef.current) return;
       const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
       const md = storage.markdown!.getMarkdown();
       onContentChange(md);
     },
   });
-
-  // Sync content to editor ONLY when noteId changes (user switches notes)
-  // content is in deps so we get the correct value, but we only act when noteId differs
-  React.useEffect(() => {
-    if (!editor) return;
-    if (noteId !== lastNoteIdRef.current) {
-      lastNoteIdRef.current = noteId ?? null;
-      suppressUpdateRef.current = true;
-      editor.commands.setContent(content || "");
-      suppressUpdateRef.current = false;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteId, editor, content]);
 
   if (!noteId) {
     return (

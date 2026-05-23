@@ -504,6 +504,7 @@ function AuthenticatedLayout() {
       >
         <div className="flex min-h-[calc(100vh-4rem)] items-start justify-center md:pt-8">
           <NotepadContainer
+            key={selectedNoteId ?? "no-note"}
             noteId={selectedNoteId}
             title={editTitle}
             content={editContent}
