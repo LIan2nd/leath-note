@@ -24,6 +24,7 @@ interface AiChatPanelProps {
   noteContent: string;
   noteTitle: string;
   noteId: string | null;
+  userName?: string | null;
 }
 
 /**
@@ -39,12 +40,14 @@ export function AiChatPanel({
   noteContent,
   noteTitle,
   noteId,
+  userName,
 }: AiChatPanelProps) {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [showClearConfirm, setShowClearConfirm] = React.useState(false);
   // Initialize with env defaults (SSR-safe), then hydrate from localStorage
   const [aiSettings, setAiSettings] = React.useState<AiSettings>(() => {
     if (typeof window === "undefined") return loadAiSettings();
@@ -226,6 +229,7 @@ export function AiChatPanel({
           noteContent: content,
           userPrompt,
           chatHistory,
+          userName: userName ?? undefined,
           providerId: settings.providerId,
           model: settings.model,
           apiKey: settings.apiKey,
@@ -303,6 +307,11 @@ export function AiChatPanel({
   };
 
   const handleClear = () => {
+    setShowClearConfirm(true);
+  };
+
+  const confirmClear = () => {
+    setShowClearConfirm(false);
     setMessages([]);
     setError(null);
     if (noteId) {
@@ -351,6 +360,36 @@ export function AiChatPanel({
         onSave={handleSaveSettings}
         onReset={handleResetSettings}
       />
+
+      {/* Clear Chat Confirmation */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowClearConfirm(false)}
+          />
+          <div className="relative rounded-lg border border-[#5a4a3a] bg-[#2a2218] p-5 shadow-xl max-w-xs w-full">
+            <h3 className="text-sm font-bold text-[#d4c5a9] mb-2">Clear chat history?</h3>
+            <p className="text-xs text-[#c8b89a] opacity-70 mb-4">
+              This will permanently delete all messages in this conversation. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="btn-skeuomorphic px-3 py-1.5 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmClear}
+                className="btn-skeuomorphic px-3 py-1.5 text-xs text-red-400 border-red-900/50"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div
         className={cn(

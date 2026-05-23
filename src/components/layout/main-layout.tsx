@@ -460,6 +460,7 @@ function AuthenticatedLayout() {
         noteContent={editContent}
         noteTitle={editTitle}
         noteId={selectedNoteId}
+        userName={session?.user?.name}
       />
 
       {/* Delete Confirmation Dialog */}
