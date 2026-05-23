@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "~/lib/utils";
-import { Loader2, Bold, Italic, Heading2, List, Quote } from "lucide-react";
+import { Loader2, Bold, Italic, Heading2, List, ListOrdered, Quote } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
@@ -121,6 +121,13 @@ function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       shortcut: "Ctrl+Shift+8",
       action: () => editor.chain().focus().toggleBulletList().run(),
       isActive: editor.isActive("bulletList"),
+    },
+    {
+      icon: ListOrdered,
+      label: "Numbered List",
+      shortcut: "Ctrl+Shift+7",
+      action: () => editor.chain().focus().toggleOrderedList().run(),
+      isActive: editor.isActive("orderedList"),
     },
     {
       icon: Quote,
