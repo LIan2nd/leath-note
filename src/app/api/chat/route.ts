@@ -364,8 +364,8 @@ export async function POST(request: NextRequest) {
 
     switch (providerId) {
       case "ollama": {
-        const host = ollamaHost ?? env.OLLAMA_HOST;
-        const resolvedModel = model ?? env.OLLAMA_MODEL;
+        const host = ollamaHost ?? env.OLLAMA_HOST ?? "http://localhost:11434";
+        const resolvedModel = model ?? env.OLLAMA_MODEL ?? "llama3.2";
         return streamOllama(messages, resolvedModel, host);
       }
 
