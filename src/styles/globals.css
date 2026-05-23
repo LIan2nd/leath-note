@@ -340,6 +340,76 @@
   color: #d4c5a9;
 }
 
+/* Folder flyout panel — shown when hovering folder icon in collapsed sidebar */
+.folder-flyout-trigger {
+  position: relative;
+}
+
+.folder-flyout {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  z-index: 50;
+  width: 260px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: linear-gradient(135deg, #2a1c12 0%, #231510 100%);
+  border: 1px solid #5a4a3a;
+  border-radius: 8px;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: opacity 0.15s ease;
+}
+
+.folder-flyout-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e0d4c0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 100%);
+}
+
+.folder-flyout-body {
+  padding: 6px;
+}
+
+.folder-flyout-note {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 4px;
+  color: #c8b89a;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+  transition: all 0.15s ease;
+}
+
+.folder-flyout-note:last-child {
+  margin-bottom: 0;
+}
+
+.folder-flyout-note:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #e0d4c0;
+}
+
+.folder-flyout-note.active {
+  background: linear-gradient(180deg, rgba(212, 197, 169, 0.18) 0%, rgba(212, 197, 169, 0.08) 100%);
+  border-color: rgba(212, 197, 169, 0.3);
+  color: #d4c5a9;
+}
+
+/* Hide flyout on mobile — sidebar is full overlay there anyway */
+@media (max-width: 768px) {
+  .folder-flyout {
+    display: none;
+  }
+}
+
 /* Custom scrollbar for notepad feel */
 .custom-scrollbar::-webkit-scrollbar {
   width: 12px;

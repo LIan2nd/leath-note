@@ -105,21 +105,64 @@ export function FolderItem({
     handleSubmit();
   };
 
-  // Collapsed sidebar: show only folder icon
+  // Collapsed sidebar: show folder icon with hover flyout panel
   if (!sidebarOpen) {
     return (
-      <div className="note-item flex justify-center p-2">
-        <button
-          onClick={onToggle}
-          className="w-full text-center"
-          aria-label={`Folder: ${folder.name}`}
-        >
-          {isExpanded ? (
-            <FolderOpen className="h-5 w-5 opacity-70 mx-auto" />
-          ) : (
-            <Folder className="h-5 w-5 opacity-70 mx-auto" />
-          )}
-        </button>
+      <div className="folder-flyout-trigger group relative">
+        <div className="note-item flex justify-center p-2">
+          <button
+            onClick={onToggle}
+            className="w-full text-center"
+            aria-label={`Folder: ${folder.name}`}
+            title={folder.name}
+          >
+            {isExpanded ? (
+              <FolderOpen className="h-5 w-5 opacity-70 mx-auto" />
+            ) : (
+              <Folder className="h-5 w-5 opacity-70 mx-auto" />
+            )}
+          </button>
+        </div>
+
+        {/* Flyout panel: shows folder name + notes inside */}
+        <div className="folder-flyout pointer-events-none opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto">
+          <div className="folder-flyout-header">
+            <Folder className="h-4 w-4 opacity-70 shrink-0" />
+            <span className="truncate font-medium text-sm">{folder.name}</span>
+            <span className="ml-auto text-[10px] opacity-60 bg-white/10 rounded-full px-1.5 py-0.5 min-w-[20px] text-center shrink-0">
+              {folder._count.notes}
+            </span>
+          </div>
+
+          <div className="folder-flyout-body">
+            {notes.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-[#c8b89a] opacity-60 italic">
+                Empty folder
+              </div>
+            ) : (
+              notes.map((note) => (
+                <button
+                  key={note.id}
+                  onClick={() => onSelectNote(note.id)}
+                  className={cn(
+                    "folder-flyout-note w-full text-left",
+                    selectedNoteId === note.id && "active"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                    <span className="truncate text-sm">
+                      {note.title || "Untitled"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-[11px] opacity-60 pl-5">
+                    {note.content?.slice(0, 50) || "Empty note..."}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     );
   }

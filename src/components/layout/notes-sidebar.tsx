@@ -267,10 +267,10 @@ export function NotesSidebar({
       {/* Sidebar */}
       <aside
         className={cn(
-          "leather-background sidebar-leather fixed left-0 top-0 z-40 flex h-full flex-col overflow-hidden",
+          "leather-background sidebar-leather fixed left-0 top-0 z-40 flex h-full flex-col",
           "transition-all duration-400 ease-in-out",
-          // Mobile: full overlay when open, hidden when closed
-          isOpen ? "w-72" : "w-0 md:w-16",
+          // When open: clip overflow (vertical scroll inside); when collapsed: allow flyouts to escape
+          isOpen ? "w-72 overflow-hidden" : "w-0 md:w-16 overflow-visible",
           // Mobile backdrop
           isOpen && "shadow-2xl md:shadow-none"
         )}
@@ -348,7 +348,10 @@ export function NotesSidebar({
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <div className="custom-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-2">
+          <div className={cn(
+            "custom-scrollbar flex-1 px-2",
+            isOpen ? "overflow-y-auto overflow-x-hidden" : "overflow-visible"
+          )}>
             <div className="space-y-2 py-2">
               {isLoading ? (
                 <div className="p-4 text-center">
