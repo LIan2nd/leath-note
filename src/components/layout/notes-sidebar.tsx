@@ -69,6 +69,7 @@ interface NotesSidebarProps {
   onStartEditFolder?: (id: string) => void;
   onMoveToFolder?: (noteId: string, folderId: string | null) => void;
   onNewFolder?: () => void;
+  isCreatingFolder?: boolean;
 }
 
 // ─── DraggableNoteItem ───────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ export function NotesSidebar({
   onStartEditFolder,
   onMoveToFolder,
   onNewFolder,
+  isCreatingFolder = false,
 }: NotesSidebarProps) {
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [activeNote, setActiveNote] = React.useState<Note | null>(null);
@@ -308,13 +310,14 @@ export function NotesSidebar({
           {onNewFolder && (
             <Button
               onClick={onNewFolder}
+              disabled={isCreatingFolder}
               className={cn(
                 "btn-skeuomorphic gap-2",
                 isOpen ? "w-full mt-2" : "w-auto p-2"
               )}
             >
-              <FolderPlus className="h-4 w-4" />
-              {isOpen && <span>New Folder</span>}
+              <FolderPlus className={cn("h-4 w-4", isCreatingFolder && "animate-pulse")} />
+              {isOpen && <span>{isCreatingFolder ? "Creating..." : "New Folder"}</span>}
             </Button>
           )}
         </div>

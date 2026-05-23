@@ -175,16 +175,46 @@ function AuthenticatedLayout() {
   // ─── Folder Mutations ───────────────────────────────────────────────────
 
   const createFolderMutation = api.folders.create.useMutation({
-    onSuccess: (newFolder) => {
+    onMutate: async () => {
+      // Cancel outgoing refetches
+      await utils.folders.list.cancel();
+      const previous = utils.folders.list.getData();
+
+      // Optimistic update: add a temporary folder immediately
+      const tempId = `temp-${Date.now()}`;
+      const tempFolder = {
+        id: tempId,
+        name: "Untitled Folder",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        userId: "",
+        _count: { notes: 0 },
+      };
+      utils.folders.list.setData(undefined, (old) =>
+        old ? [...old, tempFolder] : [tempFolder]
+      );
+
+      return { previous, tempId };
+    },
+    onSuccess: (newFolder, _vars, context) => {
+      // Replace the temp folder with the real one
       utils.folders.list.setData(undefined, (old) =>
         old
-          ? [...old, newFolder].sort((a, b) =>
-              a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-            )
+          ? old
+              .map((f) => (f.id === context?.tempId ? newFolder : f))
+              .sort((a, b) =>
+                a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+              )
           : [newFolder]
       );
       setEditingFolderId(newFolder.id);
       setExpandedFolders((prev) => new Set([...prev, newFolder.id]));
+    },
+    onError: (_err, _vars, context) => {
+      // Rollback on error
+      if (context?.previous) {
+        utils.folders.list.setData(undefined, context.previous);
+      }
     },
     onSettled: () => {
       void utils.folders.list.invalidate();
@@ -422,7 +452,10 @@ function AuthenticatedLayout() {
         onMoveToFolder={(noteId, folderId) =>
           moveToFolderMutation.mutate({ noteId, folderId })
         }
-        onNewFolder={() => createFolderMutation.mutate({})}
+        onNewFolder={() => {
+          if (!createFolderMutation.isPending) createFolderMutation.mutate({});
+        }}
+        isCreatingFolder={createFolderMutation.isPending}
       />
 
       <main
