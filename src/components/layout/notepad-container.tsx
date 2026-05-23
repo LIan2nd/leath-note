@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { cn } from "~/lib/utils";
-import { Loader2, Bold, Italic, Eye, Pencil } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Loader2, Bold, Italic, Heading2, List, Quote } from "lucide-react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Markdown } from "tiptap-markdown";
 
 interface NotepadContainerProps {
   noteId?: string | null;
@@ -39,20 +40,13 @@ function TitleEditor({ value, onChange }: { value: string; onChange: (v: string)
   const MAX_COLLAPSED_LINES = 3;
   const MAX_COLLAPSED_HEIGHT = LINE_HEIGHT * MAX_COLLAPSED_LINES;
 
-  // Measure and resize whenever value or focus changes
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
-
-    // Temporarily expand to measure full height
     el.style.height = "auto";
     const fullHeight = el.scrollHeight;
-
-    // Check if content exceeds 3 lines
     const overflows = fullHeight > MAX_COLLAPSED_HEIGHT;
     setIsOverflowing(overflows);
-
-    // Apply correct height
     if (focused) {
       el.style.height = `${fullHeight}px`;
     } else {
@@ -79,7 +73,6 @@ function TitleEditor({ value, onChange }: { value: string; onChange: (v: string)
           if (e.key === "Enter") e.preventDefault();
         }}
       />
-      {/* Show expand hint ONLY when collapsed AND content exceeds 3 lines */}
       {!focused && isOverflowing && (
         <button
           type="button"
@@ -96,6 +89,66 @@ function TitleEditor({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
+/** Floating toolbar that sits beside the paper like tools on a desk */
+function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+  if (!editor) return null;
+
+  const tools = [
+    {
+      icon: Bold,
+      label: "Bold",
+      shortcut: "Ctrl+B",
+      action: () => editor.chain().focus().toggleBold().run(),
+      isActive: editor.isActive("bold"),
+    },
+    {
+      icon: Italic,
+      label: "Italic",
+      shortcut: "Ctrl+I",
+      action: () => editor.chain().focus().toggleItalic().run(),
+      isActive: editor.isActive("italic"),
+    },
+    {
+      icon: Heading2,
+      label: "Heading",
+      shortcut: "Ctrl+Alt+2",
+      action: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      isActive: editor.isActive("heading", { level: 2 }),
+    },
+    {
+      icon: List,
+      label: "Bullet List",
+      shortcut: "Ctrl+Shift+8",
+      action: () => editor.chain().focus().toggleBulletList().run(),
+      isActive: editor.isActive("bulletList"),
+    },
+    {
+      icon: Quote,
+      label: "Quote",
+      shortcut: "Ctrl+Shift+B",
+      action: () => editor.chain().focus().toggleBlockquote().run(),
+      isActive: editor.isActive("blockquote"),
+    },
+  ];
+
+  return (
+    <div className="notepad-toolbar">
+      {tools.map((tool) => (
+        <button
+          key={tool.label}
+          type="button"
+          onClick={tool.action}
+          title={`${tool.label} (${tool.shortcut})`}
+          aria-label={tool.label}
+          className={cn("notepad-toolbar-btn", tool.isActive && "active")}
+        >
+          <tool.icon className="h-4 w-4" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function NotepadContainer({
   noteId,
   title,
@@ -107,201 +160,119 @@ export function NotepadContainer({
   authorName,
   className,
 }: NotepadContainerProps) {
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-  const [previewMode, setPreviewMode] = React.useState(false);
+  // Track the last noteId to detect note switches
+  const lastNoteIdRef = React.useRef<string | null>(null);
 
-  // Auto-resize textarea based on content
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Markdown.configure({
+        html: false,
+        transformPastedText: true,
+        transformCopiedText: true,
+      }),
+    ],
+    content,
+    editorProps: {
+      attributes: {
+        class: "notepad-editor",
+      },
+    },
+    onUpdate: ({ editor: e }) => {
+      const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
+      const md = storage.markdown!.getMarkdown();
+      onContentChange(md);
+    },
+  });
+
+  // When noteId changes (user switches notes), update editor content
   React.useEffect(() => {
-    if (textareaRef.current && !previewMode) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.max(500, textareaRef.current.scrollHeight)}px`;
-    }
-  }, [content, previewMode]);
-
-  /** Wrap selected text with markdown syntax */
-  const wrapSelection = (prefix: string, suffix: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = content.slice(start, end);
-
-    // If already wrapped, unwrap
-    const before = content.slice(start - prefix.length, start);
-    const after = content.slice(end, end + suffix.length);
-    if (before === prefix && after === suffix) {
-      const newContent =
-        content.slice(0, start - prefix.length) +
-        selected +
-        content.slice(end + suffix.length);
-      onContentChange(newContent);
-      // Restore cursor position
-      requestAnimationFrame(() => {
-        textarea.selectionStart = start - prefix.length;
-        textarea.selectionEnd = end - prefix.length;
-        textarea.focus();
-      });
-      return;
-    }
-
-    const newContent =
-      content.slice(0, start) + prefix + selected + suffix + content.slice(end);
-    onContentChange(newContent);
-
-    // Move cursor to after the wrapped text
-    requestAnimationFrame(() => {
-      if (selected.length > 0) {
-        textarea.selectionStart = start + prefix.length;
-        textarea.selectionEnd = end + prefix.length;
-      } else {
-        textarea.selectionStart = start + prefix.length;
-        textarea.selectionEnd = start + prefix.length;
-      }
-      textarea.focus();
-    });
-  };
-
-  const handleBold = () => wrapSelection("**", "**");
-  const handleItalic = () => wrapSelection("*", "*");
-
-  /** Handle keyboard shortcuts in textarea */
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === "b") {
-        e.preventDefault();
-        handleBold();
-      } else if (e.key === "i") {
-        e.preventDefault();
-        handleItalic();
+    if (!editor) return;
+    if (noteId !== lastNoteIdRef.current) {
+      lastNoteIdRef.current = noteId ?? null;
+      const storage = editor.storage as unknown as Record<string, { getMarkdown: () => string }>;
+      const currentMd = storage.markdown!.getMarkdown();
+      if (currentMd !== content) {
+        editor.commands.setContent(content || "");
       }
     }
-  };
+  }, [noteId, content, editor]);
 
   if (!noteId) {
     return (
-      <div
-        className={cn(
-          "paper-container relative mx-auto flex min-h-[800px] w-full max-w-2xl items-center justify-center overflow-hidden",
-          className
-        )}
-        style={{ backgroundColor: "var(--paper-bg)" }}
-      >
-        <div className="text-center">
-          <p className="typewriter-text text-xl opacity-50">
-            Select a note or create a new one
-          </p>
+      <div className="notepad-with-toolbar">
+        <div
+          className={cn(
+            "paper-container relative mx-auto flex min-h-[800px] w-full max-w-2xl items-center justify-center overflow-hidden",
+            className
+          )}
+          style={{ backgroundColor: "var(--paper-bg)" }}
+        >
+          <div className="text-center">
+            <p className="typewriter-text text-xl opacity-50">
+              Select a note or create a new one
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "paper-container relative mx-auto min-h-[800px] w-full max-w-2xl overflow-hidden",
-        className
-      )}
-      style={{ backgroundColor: "var(--paper-bg)" }}
-    >
-      {/* Saving indicator — bottom right of paper */}
-      {isSaving && (
-        <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2 rounded bg-white/80 px-3 py-1 text-sm shadow">
-          <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
-          <span className="text-gray-600">Saving...</span>
+    <div className="notepad-with-toolbar">
+      {/* Toolbar — sits to the right of the paper like tools on a desk */}
+      <EditorToolbar editor={editor} />
+
+      <div
+        className={cn(
+          "paper-container relative mx-auto min-h-[800px] w-full max-w-2xl overflow-hidden",
+          className
+        )}
+        style={{ backgroundColor: "var(--paper-bg)" }}
+      >
+        {/* Saving indicator */}
+        {isSaving && (
+          <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2 rounded bg-white/80 px-3 py-1 text-sm shadow">
+            <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+            <span className="text-gray-600">Saving...</span>
+          </div>
+        )}
+
+        {/* Red margin line */}
+        <div className="absolute left-[59px] top-0 h-full w-[2px] bg-[#e8b4b4] z-1" />
+
+        {/* Paper header area */}
+        <div className="relative pt-5 pb-4" style={{ backgroundColor: "var(--paper-bg)" }}>
+          {createdAt && (
+            <div className="mb-1 text-right pr-5">
+              <span className="typewriter-text text-xs text-[#8a8070]">
+                Date: {formatDate(createdAt)}
+              </span>
+            </div>
+          )}
+          <TitleEditor value={title} onChange={onTitleChange} />
         </div>
-      )}
 
-      {/* Red margin line — spans entire paper height */}
-      <div className="absolute left-[59px] top-0 h-full w-[2px] bg-[#e8b4b4] z-1" />
+        {/* Full-width blue separator line */}
+        <div className="h-[2px] w-full bg-[#9fcae3] mb-4" />
 
-      {/* Paper header area — title + date */}
-      <div className="relative pt-5 pb-4" style={{ backgroundColor: "var(--paper-bg)" }}>
-        {/* Date display — top right */}
-        {createdAt && (
-          <div className="mb-1 text-right pr-5">
-            <span className="typewriter-text text-xs text-[#8a8070]">
-              Date: {formatDate(createdAt)}
+        {/* WYSIWYG editor content area */}
+        <div className="notepad-body relative min-h-[650px]">
+          <EditorContent editor={editor} />
+        </div>
+
+        {/* Author name */}
+        {authorName && (
+          <div className="relative px-4 py-3 text-right pr-6 border-t border-[#d4cfc7]">
+            <span
+              className="text-xs italic"
+              style={{ color: "#6b5a4a", fontFamily: "'Courier Prime', monospace" }}
+            >
+              — {authorName}
             </span>
           </div>
         )}
-
-        {/* Title textarea — wraps, max 3 lines collapsed */}
-        <TitleEditor
-          value={title}
-          onChange={onTitleChange}
-        />
       </div>
-
-      {/* Full-width blue separator line */}
-      <div className="h-[2px] w-full bg-[#9fcae3] mb-4" />
-
-      {/* Formatting toolbar */}
-      <div className="flex items-center gap-1 px-4 pb-2 pl-[68px]">
-        <button
-          type="button"
-          onClick={handleBold}
-          disabled={previewMode}
-          className="notepad-toolbar-btn"
-          title="Bold (Ctrl+B)"
-          aria-label="Bold"
-        >
-          <Bold className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={handleItalic}
-          disabled={previewMode}
-          className="notepad-toolbar-btn"
-          title="Italic (Ctrl+I)"
-          aria-label="Italic"
-        >
-          <Italic className="h-3.5 w-3.5" />
-        </button>
-        <div className="flex-1" />
-        <button
-          type="button"
-          onClick={() => setPreviewMode((p) => !p)}
-          className={cn("notepad-toolbar-btn", previewMode && "active")}
-          title={previewMode ? "Edit mode" : "Preview markdown"}
-          aria-label={previewMode ? "Switch to edit mode" : "Switch to preview mode"}
-        >
-          {previewMode ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          <span className="text-[10px] ml-1">{previewMode ? "Edit" : "Preview"}</span>
-        </button>
-      </div>
-
-      {/* Notepad content area with lined paper */}
-      <div className="notepad-body relative min-h-[650px]">
-        {previewMode ? (
-          <div className="notepad-preview min-h-[650px] w-full px-4 py-0 pl-[75px]">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {content || "*Start typing your note...*"}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <textarea
-            ref={textareaRef}
-            placeholder="Start typing your note..."
-            className="notepad-textarea h-full min-h-[650px] w-full"
-            value={content}
-            onChange={(e) => onContentChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-        )}
-      </div>
-
-      {/* Author name — dedicated row at the bottom */}
-      {authorName && (
-        <div className="relative px-4 py-3 text-right pr-6 border-t border-[#d4cfc7]">
-          <span
-            className="text-xs italic"
-            style={{ color: "#6b5a4a", fontFamily: "'Courier Prime', monospace" }}
-          >
-            — {authorName}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
