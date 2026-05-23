@@ -290,8 +290,9 @@ export function NotesSidebar({
           )}
         >
           {isOpen && (
-            <h1 className="embossed-text text-base tracking-wide whitespace-nowrap">
-              🖋️ My Writings
+            <h1 className="embossed-text text-base tracking-wide whitespace-nowrap flex items-center gap-2">
+              <img src="/leath-note-logo.png" alt="Leath Notes" className="h-6 w-6" />
+              My Writings
             </h1>
           )}
           <button
