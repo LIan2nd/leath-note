@@ -33,6 +33,7 @@ interface FolderListProps {
   onDeleteFolder: (id: string) => void;
   onRenameFolder: (id: string, name: string) => void;
   onStartEditFolder: (id: string) => void;
+  onNewNoteInFolder?: (folderId: string) => void;
   /** Render prop to wrap each note item with a draggable wrapper */
   renderNoteItem?: (note: Note, children: React.ReactNode) => React.ReactNode;
   /** Render prop to wrap each folder with a droppable wrapper */
@@ -52,6 +53,7 @@ export function FolderList({
   onDeleteFolder,
   onRenameFolder,
   onStartEditFolder,
+  onNewNoteInFolder,
   renderNoteItem,
   renderFolderWrapper,
 }: FolderListProps) {
@@ -91,6 +93,7 @@ export function FolderList({
             onDelete={() => onDeleteFolder(folder.id)}
             onRename={(name: string) => onRenameFolder(folder.id, name)}
             onStartEdit={() => onStartEditFolder(folder.id)}
+            onNewNote={onNewNoteInFolder ? () => onNewNoteInFolder(folder.id) : undefined}
             renderNoteItem={renderNoteItem}
           />
         );

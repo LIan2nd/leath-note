@@ -40,6 +40,7 @@ interface FolderItemProps {
   onDelete: () => void;
   onRename: (name: string) => void;
   onStartEdit: () => void;
+  onNewNote?: () => void;
   /** Render prop to wrap each note item with a draggable wrapper */
   renderNoteItem?: (note: Note, children: React.ReactNode) => React.ReactNode;
 }
@@ -57,10 +58,12 @@ export function FolderItem({
   onDelete,
   onRename,
   onStartEdit,
+  onNewNote,
   renderNoteItem,
 }: FolderItemProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [editValue, setEditValue] = React.useState(folder.name);
+  const [flyoutOpen, setFlyoutOpen] = React.useState(false);
 
   // When entering edit mode, sync the input value and select all text
   React.useEffect(() => {
@@ -103,21 +106,77 @@ export function FolderItem({
     handleSubmit();
   };
 
-  // Collapsed sidebar: show only folder icon
+  // Collapsed sidebar: show folder icon with click flyout panel
   if (!sidebarOpen) {
     return (
-      <div className="note-item flex justify-center p-2">
-        <button
-          onClick={onToggle}
-          className="w-full text-center"
-          aria-label={`Folder: ${folder.name}`}
-        >
-          {isExpanded ? (
-            <FolderOpen className="h-5 w-5 opacity-70 mx-auto" />
-          ) : (
-            <Folder className="h-5 w-5 opacity-70 mx-auto" />
-          )}
-        </button>
+      <div className="folder-flyout-trigger relative">
+        <div className="note-item flex justify-center p-2">
+          <button
+            onClick={() => setFlyoutOpen((p) => !p)}
+            className="w-full text-center"
+            aria-label={`Folder: ${folder.name}`}
+            title={folder.name}
+          >
+            {flyoutOpen ? (
+              <FolderOpen className="h-5 w-5 opacity-70 mx-auto" />
+            ) : (
+              <Folder className="h-5 w-5 opacity-70 mx-auto" />
+            )}
+          </button>
+        </div>
+
+        {/* Flyout panel: shows folder name + notes inside */}
+        {flyoutOpen && (
+          <>
+            {/* Backdrop to close flyout */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setFlyoutOpen(false)}
+            />
+            <div className="folder-flyout">
+              <div className="folder-flyout-header">
+                <Folder className="h-4 w-4 opacity-70 shrink-0" />
+                <span className="truncate font-medium text-sm">{folder.name}</span>
+                <span className="ml-auto text-[10px] opacity-60 bg-white/10 rounded-full px-1.5 py-0.5 min-w-[20px] text-center shrink-0">
+                  {folder._count.notes}
+                </span>
+              </div>
+
+              <div className="folder-flyout-body">
+                {notes.length === 0 ? (
+                  <button
+                    onClick={() => { onNewNote?.(); setFlyoutOpen(false); }}
+                    className="w-full px-3 py-2 text-[11px] text-[#c8b89a] opacity-60 hover:opacity-100 italic text-left transition-opacity flex items-center gap-1.5"
+                  >
+                    <span>+</span>
+                    <span>Add a note</span>
+                  </button>
+                ) : (
+                  notes.map((note) => (
+                    <button
+                      key={note.id}
+                      onClick={() => { onSelectNote(note.id); setFlyoutOpen(false); }}
+                      className={cn(
+                        "folder-flyout-note w-full text-left",
+                        selectedNoteId === note.id && "active"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                        <span className="truncate text-sm">
+                          {note.title || "Untitled"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] opacity-60 pl-5">
+                        {note.content?.slice(0, 50) || "Empty note..."}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -208,9 +267,13 @@ export function FolderItem({
       {isExpanded && (
         <div className="ml-4 border-l border-white/10 pl-2 space-y-1 py-1">
           {notes.length === 0 ? (
-            <div className="px-3 py-2 text-[11px] text-[#c8b89a] opacity-50 italic">
-              No notes in this folder
-            </div>
+            <button
+              onClick={onNewNote}
+              className="w-full px-3 py-2 text-[11px] text-[#c8b89a] opacity-60 hover:opacity-100 italic text-left transition-opacity flex items-center gap-1.5"
+            >
+              <span>+</span>
+              <span>Add a note</span>
+            </button>
           ) : (
             notes.map((note) => {
               const noteContent = (

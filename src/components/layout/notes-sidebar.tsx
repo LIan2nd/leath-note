@@ -55,6 +55,7 @@ interface NotesSidebarProps {
   selectedNoteId?: string | null;
   onSelectNote: (id: string) => void;
   onNewNote: () => void;
+  isCreatingNote?: boolean;
   onDeleteNote: (id: string) => void;
   onOpenProfile: () => void;
   notes: Note[];
@@ -69,6 +70,8 @@ interface NotesSidebarProps {
   onStartEditFolder?: (id: string) => void;
   onMoveToFolder?: (noteId: string, folderId: string | null) => void;
   onNewFolder?: () => void;
+  isCreatingFolder?: boolean;
+  onNewNoteInFolder?: (folderId: string) => void;
 }
 
 // ─── DraggableNoteItem ───────────────────────────────────────────────────────
@@ -153,6 +156,7 @@ export function NotesSidebar({
   selectedNoteId,
   onSelectNote,
   onNewNote,
+  isCreatingNote = false,
   onDeleteNote,
   onOpenProfile,
   notes,
@@ -166,6 +170,8 @@ export function NotesSidebar({
   onStartEditFolder,
   onMoveToFolder,
   onNewFolder,
+  isCreatingFolder = false,
+  onNewNoteInFolder,
 }: NotesSidebarProps) {
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [activeNote, setActiveNote] = React.useState<Note | null>(null);
@@ -261,11 +267,21 @@ export function NotesSidebar({
       {/* Sidebar */}
       <aside
         className={cn(
-          "leather-background sidebar-leather fixed left-0 top-0 z-40 flex h-full flex-col overflow-hidden",
+          "leather-background sidebar-leather fixed left-0 top-0 z-40 flex h-full flex-col",
           "transition-all duration-400 ease-in-out",
-          isOpen ? "w-72" : "w-0 md:w-16"
+          isOpen
+            ? "w-72 overflow-hidden shadow-2xl md:shadow-none"
+            : "w-0 overflow-hidden md:w-16 md:overflow-visible",
         )}
       >
+
+        {/* Mobile close overlay */}
+        {isOpen && (
+          <div
+            className="fixed inset-0 z-[-1] bg-black/40 md:hidden"
+            onClick={onToggle}
+          />
+        )}
         {/* Sidebar Header */}
         <div
           className={cn(
@@ -297,24 +313,26 @@ export function NotesSidebar({
         <div className={cn("p-3", !isOpen && "flex flex-col items-center gap-2")}>
           <Button
             onClick={onNewNote}
+            disabled={isCreatingNote}
             className={cn(
               "btn-skeuomorphic gap-2",
               isOpen ? "w-full" : "w-auto p-2"
             )}
           >
-            <Plus className="h-4 w-4" />
-            {isOpen && <span>New Note</span>}
+            <Plus className={cn("h-4 w-4", isCreatingNote && "animate-pulse")} />
+            {isOpen && <span>{isCreatingNote ? "Creating..." : "New Note"}</span>}
           </Button>
           {onNewFolder && (
             <Button
               onClick={onNewFolder}
+              disabled={isCreatingFolder}
               className={cn(
                 "btn-skeuomorphic gap-2",
                 isOpen ? "w-full mt-2" : "w-auto p-2"
               )}
             >
-              <FolderPlus className="h-4 w-4" />
-              {isOpen && <span>New Folder</span>}
+              <FolderPlus className={cn("h-4 w-4", isCreatingFolder && "animate-pulse")} />
+              {isOpen && <span>{isCreatingFolder ? "Creating..." : "New Folder"}</span>}
             </Button>
           )}
         </div>
@@ -329,7 +347,10 @@ export function NotesSidebar({
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <div className="custom-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-2">
+          <div className={cn(
+            "custom-scrollbar flex-1 px-2",
+            isOpen ? "overflow-y-auto overflow-x-hidden" : "overflow-visible"
+          )}>
             <div className="space-y-2 py-2">
               {isLoading ? (
                 <div className="p-4 text-center">
@@ -352,6 +373,7 @@ export function NotesSidebar({
                       onDeleteFolder={handleDeleteFolderRequest}
                       onRenameFolder={onRenameFolder}
                       onStartEditFolder={onStartEditFolder}
+                      onNewNoteInFolder={onNewNoteInFolder}
                       renderNoteItem={(note, children) => (
                         <DraggableNoteItem key={note.id} note={note}>
                           {children}
@@ -449,7 +471,7 @@ export function NotesSidebar({
         <Separator className="bg-white/10" />
         <div
           className={cn(
-            "p-3",
+            "p-3 shrink-0",
             isOpen
               ? "flex items-center justify-between"
               : "flex flex-col items-center gap-2"
@@ -460,7 +482,10 @@ export function NotesSidebar({
               Where thoughts become words ✍️
             </span>
           )}
-          <div className="flex items-center gap-1">
+          <div className={cn(
+            "flex gap-1",
+            isOpen ? "items-center" : "flex-col items-center"
+          )}>
             <button
               onClick={onOpenProfile}
               className="btn-skeuomorphic p-2"

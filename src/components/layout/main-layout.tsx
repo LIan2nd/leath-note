@@ -79,11 +79,25 @@ function AuthenticatedLayout() {
 
   const utils = api.useUtils();
 
+  // Track IDs being deleted to prevent them from reappearing during refetch
+  const pendingNoteDeletes = React.useRef(new Set<string>());
+  const pendingFolderDeletes = React.useRef(new Set<string>());
+
   // Single query — all note data lives here, no getById needed
-  const { data: notes, isLoading: isLoadingNotes } = api.notes.list.useQuery();
+  const { data: rawNotes, isLoading: isLoadingNotes } = api.notes.list.useQuery();
 
   // Folder query
-  const { data: folders } = api.folders.list.useQuery();
+  const { data: rawFolders } = api.folders.list.useQuery();
+
+  // Filter out items that are pending deletion (prevents reappearing on refetch)
+  const notes = React.useMemo(
+    () => rawNotes?.filter((n) => !pendingNoteDeletes.current.has(n.id)),
+    [rawNotes]
+  );
+  const folders = React.useMemo(
+    () => rawFolders?.filter((f) => !pendingFolderDeletes.current.has(f.id)),
+    [rawFolders]
+  );
 
   // Derive the selected note directly from the cache — zero extra fetch
   const selectedNote = React.useMemo(
@@ -97,8 +111,8 @@ function AuthenticatedLayout() {
       utils.notes.list.setData(undefined, (old) =>
         old ? [newNote, ...old] : [newNote]
       );
-      // Switch to the new note — editor sync will handle setting title/content
-      handleSelectNote(newNote.id);
+      // Switch to the new note — set content directly since cache hasn't re-rendered yet
+      handleSelectNoteWithData(newNote.id, newNote.title, newNote.content);
       void utils.notes.list.invalidate();
     },
   });
@@ -137,6 +151,7 @@ function AuthenticatedLayout() {
 
   const deleteNoteMutation = api.notes.delete.useMutation({
     onMutate: async ({ id }) => {
+      pendingNoteDeletes.current.add(id);
       await utils.notes.list.cancel();
       const previous = utils.notes.list.getData();
       utils.notes.list.setData(undefined, (old) => old?.filter((n) => n.id !== id));
@@ -164,27 +179,64 @@ function AuthenticatedLayout() {
 
       return { previous };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, { id }, ctx) => {
+      pendingNoteDeletes.current.delete(id);
       if (ctx?.previous) utils.notes.list.setData(undefined, ctx.previous);
     },
+    onSuccess: (_data, { id }) => {
+      pendingNoteDeletes.current.delete(id);
+    },
     onSettled: () => {
-      void utils.notes.list.invalidate();
+      // Only invalidate if no more pending deletes — prevents reappearing items
+      if (pendingNoteDeletes.current.size === 0) {
+        void utils.notes.list.invalidate();
+      }
     },
   });
 
   // ─── Folder Mutations ───────────────────────────────────────────────────
 
   const createFolderMutation = api.folders.create.useMutation({
-    onSuccess: (newFolder) => {
+    onMutate: async () => {
+      // Cancel outgoing refetches
+      await utils.folders.list.cancel();
+      const previous = utils.folders.list.getData();
+
+      // Optimistic update: add a temporary folder immediately
+      const tempId = `temp-${Date.now()}`;
+      const tempFolder = {
+        id: tempId,
+        name: "Untitled Folder",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        userId: "",
+        _count: { notes: 0 },
+      };
+      utils.folders.list.setData(undefined, (old) =>
+        old ? [...old, tempFolder] : [tempFolder]
+      );
+
+      return { previous, tempId };
+    },
+    onSuccess: (newFolder, _vars, context) => {
+      // Replace the temp folder with the real one
       utils.folders.list.setData(undefined, (old) =>
         old
-          ? [...old, newFolder].sort((a, b) =>
-              a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-            )
+          ? old
+              .map((f) => (f.id === context?.tempId ? newFolder : f))
+              .sort((a, b) =>
+                a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+              )
           : [newFolder]
       );
       setEditingFolderId(newFolder.id);
       setExpandedFolders((prev) => new Set([...prev, newFolder.id]));
+    },
+    onError: (_err, _vars, context) => {
+      // Rollback on error
+      if (context?.previous) {
+        utils.folders.list.setData(undefined, context.previous);
+      }
     },
     onSettled: () => {
       void utils.folders.list.invalidate();
@@ -210,6 +262,7 @@ function AuthenticatedLayout() {
 
   const deleteFolderMutation = api.folders.delete.useMutation({
     onMutate: async ({ id }) => {
+      pendingFolderDeletes.current.add(id);
       await utils.folders.list.cancel();
       const previousFolders = utils.folders.list.getData();
       utils.folders.list.setData(undefined, (old) =>
@@ -223,13 +276,20 @@ function AuthenticatedLayout() {
       );
       return { previousFolders, previousNotes };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, { id }, ctx) => {
+      pendingFolderDeletes.current.delete(id);
       if (ctx?.previousFolders) utils.folders.list.setData(undefined, ctx.previousFolders);
       if (ctx?.previousNotes) utils.notes.list.setData(undefined, ctx.previousNotes);
     },
+    onSuccess: (_data, { id }) => {
+      pendingFolderDeletes.current.delete(id);
+    },
     onSettled: () => {
-      void utils.folders.list.invalidate();
-      void utils.notes.list.invalidate();
+      // Only invalidate if no more pending deletes
+      if (pendingFolderDeletes.current.size === 0) {
+        void utils.folders.list.invalidate();
+        void utils.notes.list.invalidate();
+      }
     },
   });
 
@@ -251,26 +311,15 @@ function AuthenticatedLayout() {
     },
   });
 
-  // Sync editor when selected note changes — instant from cache
-  React.useEffect(() => {
-    if (selectedNote) {
-      setEditTitle(selectedNote.title);
-      setEditContent(selectedNote.content);
-      savedTitleRef.current = selectedNote.title;
-      savedContentRef.current = selectedNote.content;
-    } else {
-      setEditTitle("");
-      setEditContent("");
-      savedTitleRef.current = "";
-      savedContentRef.current = "";
-    }
-  }, [selectedNoteId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // ^ intentionally depend on selectedNoteId (not selectedNote) to avoid re-syncing on cache updates
-
   // Auto-select first note on load
   React.useEffect(() => {
     if (!selectedNoteId && notes && notes.length > 0) {
-      setSelectedNoteId(notes[0]!.id);
+      const firstNote = notes[0]!;
+      setEditTitle(firstNote.title);
+      setEditContent(firstNote.content);
+      savedTitleRef.current = firstNote.title;
+      savedContentRef.current = firstNote.content;
+      setSelectedNoteId(firstNote.id);
     }
   }, [notes, selectedNoteId]);
 
@@ -317,12 +366,57 @@ function AuthenticatedLayout() {
       }
     }
 
-    // Switch to new note — sync effect will populate editor from cache
+    // Switch to new note — set content synchronously so NotepadContainer
+    // mounts with the correct content (key={noteId} causes remount)
+    const nextNote = notes?.find((n) => n.id === id);
+    if (nextNote) {
+      setEditTitle(nextNote.title);
+      setEditContent(nextNote.content);
+      savedTitleRef.current = nextNote.title;
+      savedContentRef.current = nextNote.content;
+    } else {
+      setEditTitle("");
+      setEditContent("");
+      savedTitleRef.current = "";
+      savedContentRef.current = "";
+    }
+    setSelectedNoteId(id);
+  };
+
+  /** Switch to a note when we already have its data (e.g. from mutation response) */
+  const handleSelectNoteWithData = (id: string, noteTitle: string, noteContent: string) => {
+    if (id === selectedNoteId) return;
+
+    // Save current note if needed
+    if (selectedNoteId) {
+      const titleChanged = editTitle !== savedTitleRef.current;
+      const contentChanged = editContent !== savedContentRef.current;
+      if (titleChanged || contentChanged) {
+        savedTitleRef.current = editTitle;
+        savedContentRef.current = editContent;
+        updateNoteMutation.mutate({
+          id: selectedNoteId,
+          title: editTitle,
+          content: editContent,
+        });
+      }
+    }
+
+    setEditTitle(noteTitle);
+    setEditContent(noteContent);
+    savedTitleRef.current = noteTitle;
+    savedContentRef.current = noteContent;
     setSelectedNoteId(id);
   };
 
   const handleNewNote = () => {
+    if (createNoteMutation.isPending) return;
     createNoteMutation.mutate({ title: "Untitled", content: "" });
+  };
+
+  const handleNewNoteInFolder = (folderId: string) => {
+    if (createNoteMutation.isPending) return;
+    createNoteMutation.mutate({ title: "Untitled", content: "", folderId });
   };
 
   const handleDeleteNote = (id: string) => {
@@ -394,6 +488,7 @@ function AuthenticatedLayout() {
         selectedNoteId={selectedNoteId}
         onSelectNote={handleSelectNote}
         onNewNote={handleNewNote}
+        isCreatingNote={createNoteMutation.isPending}
         onDeleteNote={handleDeleteNote}
         onOpenProfile={() => setProfileOpen(true)}
         notes={notes ?? []}
@@ -422,17 +517,22 @@ function AuthenticatedLayout() {
         onMoveToFolder={(noteId, folderId) =>
           moveToFolderMutation.mutate({ noteId, folderId })
         }
-        onNewFolder={() => createFolderMutation.mutate({})}
+        onNewFolder={() => {
+          if (!createFolderMutation.isPending) createFolderMutation.mutate({});
+        }}
+        isCreatingFolder={createFolderMutation.isPending}
+        onNewNoteInFolder={handleNewNoteInFolder}
       />
 
       <main
         className={cn(
-          "min-h-screen p-4 transition-[margin] duration-500 ease-in-out md:p-8",
+          "min-h-screen p-2 pt-14 transition-[margin] duration-500 ease-in-out sm:p-4 md:p-8 md:pt-8",
           sidebarOpen ? "md:ml-72" : "md:ml-16"
         )}
       >
-        <div className="flex min-h-[calc(100vh-4rem)] items-start justify-center pt-8">
+        <div className="flex min-h-[calc(100vh-4rem)] items-start justify-center md:pt-8">
           <NotepadContainer
+            key={selectedNoteId ?? "no-note"}
             noteId={selectedNoteId}
             title={editTitle}
             content={editContent}
@@ -460,6 +560,7 @@ function AuthenticatedLayout() {
         noteContent={editContent}
         noteTitle={editTitle}
         noteId={selectedNoteId}
+        userName={session?.user?.name}
       />
 
       {/* Delete Confirmation Dialog */}

@@ -12,6 +12,7 @@ interface ChatRequest {
   noteContent: string;
   userPrompt: string;
   chatHistory?: { role: "user" | "assistant"; content: string }[];
+  userName?: string;
   // Provider config sent from client (API key never stored server-side)
   providerId?: ProviderId;
   model?: string;
@@ -47,12 +48,13 @@ function sanitizeNoteContent(content: string): string {
   return sanitized;
 }
 
-function buildSystemPrompt(noteTitle: string, noteContent: string): string {
+function buildSystemPrompt(noteTitle: string, noteContent: string, userName?: string): string {
   const safeContent = sanitizeNoteContent(noteContent);
   const safeTitle = (noteTitle || "Untitled").trim().slice(0, 200);
+  const userContext = userName ? `\nThe user's name is "${userName.trim().slice(0, 50)}". You may address them by name occasionally to be friendly, but don't overdo it.` : "";
 
   return `<role>
-You are "Leath Notes AI" — a focused writing assistant embedded inside a personal notepad application. Your sole purpose is to help the user with their note: improving writing, summarizing, answering questions about the note content, brainstorming ideas related to the note, and assisting with grammar or structure.
+You are "Leath Notes AI" — a focused writing assistant embedded inside a personal notepad application. Your sole purpose is to help the user with their note: improving writing, summarizing, answering questions about the note content, brainstorming ideas related to the note, and assisting with grammar or structure.${userContext}
 </role>
 
 <rules>
@@ -340,6 +342,7 @@ export async function POST(request: NextRequest) {
       noteContent,
       userPrompt,
       chatHistory = [],
+      userName,
       providerId = "ollama",
       model,
       apiKey = "",
@@ -354,7 +357,7 @@ export async function POST(request: NextRequest) {
     // Limit user prompt length to prevent abuse
     const trimmedPrompt = userPrompt.trim().slice(0, 2000);
 
-    const systemPrompt = buildSystemPrompt(noteTitle, noteContent);
+    const systemPrompt = buildSystemPrompt(noteTitle, noteContent, userName);
     const messages: Message[] = [
       { role: "system", content: systemPrompt },
       // Limit chat history to last 20 messages to prevent context overflow
