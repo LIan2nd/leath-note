@@ -17,15 +17,17 @@ interface KeyboardShortcutActions {
 /**
  * Global keyboard shortcuts for the notepad app.
  *
- * Shortcuts (using Alt to avoid browser conflicts):
- * - Ctrl+B           → Toggle sidebar
+ * Shortcuts:
+ * - Alt+B             → Toggle sidebar
  * - Ctrl+J           → Toggle AI chat panel
  * - Alt+N            → New note (avoids Ctrl+N = new browser window)
  * - Ctrl+S           → Force save now
  * - Escape           → Close any open modal/panel
  * - Ctrl+Shift+T     → Focus title
  * - Ctrl+Shift+E     → Focus body/editor
- * - Alt+↑ / Alt+↓    → Navigate between notes (avoids Ctrl+↑/↓ = scroll)
+ * - Alt+↑ / Alt+↓    → Navigate between notes
+ * - Ctrl+B           → Bold (handled by Tiptap editor)
+ * - Ctrl+I           → Italic (handled by Tiptap editor)
  */
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
   useEffect(() => {
@@ -45,6 +47,10 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
       // Alt-based shortcuts (no browser conflicts)
       if (alt && !ctrl) {
         switch (key) {
+          case "b":
+            e.preventDefault();
+            actions.toggleSidebar();
+            return;
           case "n":
             e.preventDefault();
             actions.newNote();
@@ -63,11 +69,6 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
       // Ctrl shortcuts (only ones that don't conflict with browser)
       if (ctrl && !alt) {
         switch (key) {
-          case "b":
-            // Ctrl+B: no browser default (bold only in contenteditable)
-            e.preventDefault();
-            actions.toggleSidebar();
-            return;
           case "j":
             // Ctrl+J: downloads page in Chrome, but rarely used — safe to override
             e.preventDefault();
