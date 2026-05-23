@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import { cn } from "~/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader2, Bold, Italic, Eye, Pencil } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface NotepadContainerProps {
   noteId?: string | null;
@@ -106,14 +108,75 @@ export function NotepadContainer({
   className,
 }: NotepadContainerProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const [previewMode, setPreviewMode] = React.useState(false);
 
   // Auto-resize textarea based on content
   React.useEffect(() => {
-    if (textareaRef.current) {
+    if (textareaRef.current && !previewMode) {
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.max(500, textareaRef.current.scrollHeight)}px`;
     }
-  }, [content]);
+  }, [content, previewMode]);
+
+  /** Wrap selected text with markdown syntax */
+  const wrapSelection = (prefix: string, suffix: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.slice(start, end);
+
+    // If already wrapped, unwrap
+    const before = content.slice(start - prefix.length, start);
+    const after = content.slice(end, end + suffix.length);
+    if (before === prefix && after === suffix) {
+      const newContent =
+        content.slice(0, start - prefix.length) +
+        selected +
+        content.slice(end + suffix.length);
+      onContentChange(newContent);
+      // Restore cursor position
+      requestAnimationFrame(() => {
+        textarea.selectionStart = start - prefix.length;
+        textarea.selectionEnd = end - prefix.length;
+        textarea.focus();
+      });
+      return;
+    }
+
+    const newContent =
+      content.slice(0, start) + prefix + selected + suffix + content.slice(end);
+    onContentChange(newContent);
+
+    // Move cursor to after the wrapped text
+    requestAnimationFrame(() => {
+      if (selected.length > 0) {
+        textarea.selectionStart = start + prefix.length;
+        textarea.selectionEnd = end + prefix.length;
+      } else {
+        textarea.selectionStart = start + prefix.length;
+        textarea.selectionEnd = start + prefix.length;
+      }
+      textarea.focus();
+    });
+  };
+
+  const handleBold = () => wrapSelection("**", "**");
+  const handleItalic = () => wrapSelection("*", "*");
+
+  /** Handle keyboard shortcuts in textarea */
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === "b") {
+        e.preventDefault();
+        handleBold();
+      } else if (e.key === "i") {
+        e.preventDefault();
+        handleItalic();
+      }
+    }
+  };
 
   if (!noteId) {
     return (
@@ -173,16 +236,59 @@ export function NotepadContainer({
       {/* Full-width blue separator line */}
       <div className="h-[2px] w-full bg-[#9fcae3] mb-4" />
 
+      {/* Formatting toolbar */}
+      <div className="flex items-center gap-1 px-4 pb-2 pl-[68px]">
+        <button
+          type="button"
+          onClick={handleBold}
+          disabled={previewMode}
+          className="notepad-toolbar-btn"
+          title="Bold (Ctrl+B)"
+          aria-label="Bold"
+        >
+          <Bold className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={handleItalic}
+          disabled={previewMode}
+          className="notepad-toolbar-btn"
+          title="Italic (Ctrl+I)"
+          aria-label="Italic"
+        >
+          <Italic className="h-3.5 w-3.5" />
+        </button>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => setPreviewMode((p) => !p)}
+          className={cn("notepad-toolbar-btn", previewMode && "active")}
+          title={previewMode ? "Edit mode" : "Preview markdown"}
+          aria-label={previewMode ? "Switch to edit mode" : "Switch to preview mode"}
+        >
+          {previewMode ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          <span className="text-[10px] ml-1">{previewMode ? "Edit" : "Preview"}</span>
+        </button>
+      </div>
+
       {/* Notepad content area with lined paper */}
       <div className="notepad-body relative min-h-[650px]">
-        {/* Writing area */}
-        <textarea
-          ref={textareaRef}
-          placeholder="Start typing your note..."
-          className="notepad-textarea h-full min-h-[650px] w-full"
-          value={content}
-          onChange={(e) => onContentChange(e.target.value)}
-        />
+        {previewMode ? (
+          <div className="notepad-preview min-h-[650px] w-full px-4 py-0 pl-[75px]">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {content || "*Start typing your note...*"}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <textarea
+            ref={textareaRef}
+            placeholder="Start typing your note..."
+            className="notepad-textarea h-full min-h-[650px] w-full"
+            value={content}
+            onChange={(e) => onContentChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        )}
       </div>
 
       {/* Author name — dedicated row at the bottom */}

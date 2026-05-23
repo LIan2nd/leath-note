@@ -379,6 +379,101 @@
   font-style: italic;
 }
 
+/* Notepad formatting toolbar */
+.notepad-toolbar-btn {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #8a8070;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.notepad-toolbar-btn:hover:not(:disabled) {
+  color: var(--ink-color);
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.notepad-toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.notepad-toolbar-btn.active {
+  color: var(--ink-color);
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* Notepad markdown preview */
+.notepad-preview {
+  font-family: var(--font-typewriter);
+  font-size: 16px;
+  line-height: var(--line-height);
+  color: var(--ink-color);
+}
+.notepad-preview p {
+  margin: 0 0 0.5em;
+}
+.notepad-preview strong {
+  font-weight: 700;
+  color: #2c2418;
+}
+.notepad-preview em {
+  font-style: italic;
+}
+.notepad-preview ul,
+.notepad-preview ol {
+  margin: 0.3em 0;
+  padding-left: 1.5em;
+}
+.notepad-preview li {
+  margin: 0.2em 0;
+}
+.notepad-preview code {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-size: 0.9em;
+}
+.notepad-preview pre {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  padding: 0.6em 0.8em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+.notepad-preview pre code {
+  background: none;
+  padding: 0;
+}
+.notepad-preview blockquote {
+  border-left: 3px solid #c8b89a;
+  padding-left: 0.8em;
+  margin: 0.5em 0;
+  opacity: 0.8;
+}
+.notepad-preview h1,
+.notepad-preview h2,
+.notepad-preview h3 {
+  font-weight: 700;
+  color: #2c2418;
+  margin: 0.6em 0 0.3em;
+}
+.notepad-preview h1 { font-size: 1.4em; }
+.notepad-preview h2 { font-size: 1.2em; }
+.notepad-preview h3 { font-size: 1.05em; }
+.notepad-preview a {
+  color: #6b5a4a;
+  text-decoration: underline;
+}
+.notepad-preview hr {
+  border: none;
+  border-top: 1px solid #d4cfc7;
+  margin: 0.8em 0;
+}
+
 /* Title input styling */
 .title-input {
   font-family: var(--font-typewriter);
