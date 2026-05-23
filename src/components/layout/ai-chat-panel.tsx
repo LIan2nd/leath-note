@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { Bot, Send, X, Loader2, Sparkles, RotateCcw, Settings } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "~/lib/utils";
 import {
   loadAiSettings,
@@ -520,7 +522,17 @@ export function AiChatPanel({
                     msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"
                   )}
                 >
-                  {msg.content || (
+                  {msg.content ? (
+                    msg.role === "assistant" ? (
+                      <div className="chat-markdown prose-sm">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      msg.content
+                    )
+                  ) : (
                     <span className="flex items-center gap-1 opacity-60">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       <span className="typewriter-text text-xs">Thinking...</span>

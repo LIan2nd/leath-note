@@ -485,6 +485,84 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+/* Markdown rendering inside AI chat bubbles */
+.chat-markdown p {
+  margin: 0.4em 0;
+}
+.chat-markdown p:first-child {
+  margin-top: 0;
+}
+.chat-markdown p:last-child {
+  margin-bottom: 0;
+}
+.chat-markdown strong {
+  color: #e0d4c0;
+  font-weight: 700;
+}
+.chat-markdown em {
+  color: #d4c5a9;
+  font-style: italic;
+}
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+.chat-markdown li {
+  margin: 0.2em 0;
+}
+.chat-markdown li::marker {
+  color: #8b7355;
+}
+.chat-markdown code {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+  font-family: var(--font-typewriter);
+  color: #d4c5a9;
+}
+.chat-markdown pre {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 0.6em 0.8em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+.chat-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8em;
+}
+.chat-markdown blockquote {
+  border-left: 3px solid #8b7355;
+  padding-left: 0.8em;
+  margin: 0.5em 0;
+  opacity: 0.85;
+}
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3 {
+  color: #e0d4c0;
+  font-weight: 700;
+  margin: 0.6em 0 0.3em;
+}
+.chat-markdown h1 { font-size: 1.1em; }
+.chat-markdown h2 { font-size: 1em; }
+.chat-markdown h3 { font-size: 0.95em; }
+.chat-markdown a {
+  color: #c8a86e;
+  text-decoration: underline;
+}
+.chat-markdown hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0.6em 0;
+}
+
 /* Suggestion chips */
 .chat-suggestion {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
