@@ -79,11 +79,25 @@ function AuthenticatedLayout() {
 
   const utils = api.useUtils();
 
+  // Track IDs being deleted to prevent them from reappearing during refetch
+  const pendingNoteDeletes = React.useRef(new Set<string>());
+  const pendingFolderDeletes = React.useRef(new Set<string>());
+
   // Single query — all note data lives here, no getById needed
-  const { data: notes, isLoading: isLoadingNotes } = api.notes.list.useQuery();
+  const { data: rawNotes, isLoading: isLoadingNotes } = api.notes.list.useQuery();
 
   // Folder query
-  const { data: folders } = api.folders.list.useQuery();
+  const { data: rawFolders } = api.folders.list.useQuery();
+
+  // Filter out items that are pending deletion (prevents reappearing on refetch)
+  const notes = React.useMemo(
+    () => rawNotes?.filter((n) => !pendingNoteDeletes.current.has(n.id)),
+    [rawNotes]
+  );
+  const folders = React.useMemo(
+    () => rawFolders?.filter((f) => !pendingFolderDeletes.current.has(f.id)),
+    [rawFolders]
+  );
 
   // Derive the selected note directly from the cache — zero extra fetch
   const selectedNote = React.useMemo(
@@ -137,6 +151,7 @@ function AuthenticatedLayout() {
 
   const deleteNoteMutation = api.notes.delete.useMutation({
     onMutate: async ({ id }) => {
+      pendingNoteDeletes.current.add(id);
       await utils.notes.list.cancel();
       const previous = utils.notes.list.getData();
       utils.notes.list.setData(undefined, (old) => old?.filter((n) => n.id !== id));
@@ -164,11 +179,18 @@ function AuthenticatedLayout() {
 
       return { previous };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, { id }, ctx) => {
+      pendingNoteDeletes.current.delete(id);
       if (ctx?.previous) utils.notes.list.setData(undefined, ctx.previous);
     },
+    onSuccess: (_data, { id }) => {
+      pendingNoteDeletes.current.delete(id);
+    },
     onSettled: () => {
-      void utils.notes.list.invalidate();
+      // Only invalidate if no more pending deletes — prevents reappearing items
+      if (pendingNoteDeletes.current.size === 0) {
+        void utils.notes.list.invalidate();
+      }
     },
   });
 
@@ -240,6 +262,7 @@ function AuthenticatedLayout() {
 
   const deleteFolderMutation = api.folders.delete.useMutation({
     onMutate: async ({ id }) => {
+      pendingFolderDeletes.current.add(id);
       await utils.folders.list.cancel();
       const previousFolders = utils.folders.list.getData();
       utils.folders.list.setData(undefined, (old) =>
@@ -253,13 +276,20 @@ function AuthenticatedLayout() {
       );
       return { previousFolders, previousNotes };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (_err, { id }, ctx) => {
+      pendingFolderDeletes.current.delete(id);
       if (ctx?.previousFolders) utils.folders.list.setData(undefined, ctx.previousFolders);
       if (ctx?.previousNotes) utils.notes.list.setData(undefined, ctx.previousNotes);
     },
+    onSuccess: (_data, { id }) => {
+      pendingFolderDeletes.current.delete(id);
+    },
     onSettled: () => {
-      void utils.folders.list.invalidate();
-      void utils.notes.list.invalidate();
+      // Only invalidate if no more pending deletes
+      if (pendingFolderDeletes.current.size === 0) {
+        void utils.folders.list.invalidate();
+        void utils.notes.list.invalidate();
+      }
     },
   });
 
