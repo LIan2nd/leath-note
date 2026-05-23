@@ -164,13 +164,13 @@ export function AiChatPanel({
     // Don't allow sending if this note already has an active stream
     if (activeStreams.has(noteId)) return;
 
-    if (provider.requiresApiKey && !aiSettings.apiKey) {
-      setError(`${provider.label} requires an API key. Click ⚙️ to configure.`);
+    if (needsSetup) {
+      setError("Please configure your AI provider first. Click ⚙️ to set up.");
       return;
     }
 
-    if (needsSetup) {
-      setError("Please configure your AI provider first. Click ⚙️ to set up.");
+    if (provider?.requiresApiKey && !aiSettings.apiKey) {
+      setError(`${provider.label} requires an API key. Click ⚙️ to configure.`);
       return;
     }
 
