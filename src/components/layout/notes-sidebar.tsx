@@ -30,6 +30,13 @@ import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { Separator } from "~/components/ui/separator";
 import { FolderList } from "./folder-list";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+} from "~/components/ui/context-menu";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -399,51 +406,67 @@ export function NotesSidebar({
                     ) : (
                       rootNotes.map((note) => (
                         <DraggableNoteItem key={note.id} note={note}>
-                          <div
-                            className={cn(
-                              "note-item relative w-full p-3 text-left transition-all overflow-hidden",
-                              selectedNoteId === note.id && "active",
-                              !isOpen && "flex justify-center p-2"
-                            )}
-                          >
-                            {isOpen ? (
-                              <div className="flex items-start gap-1 w-full overflow-hidden">
-                                <button
-                                  onClick={() => onSelectNote(note.id)}
-                                  className="min-w-0 flex-1 overflow-hidden text-left"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="h-4 w-4 shrink-0 opacity-70" />
-                                    <span className="truncate font-medium">
-                                      {note.title || "Untitled"}
-                                    </span>
-                                  </div>
-                                  <p className="mt-1 truncate text-xs opacity-60 pl-6">
-                                    {note.content?.slice(0, 50) || "Empty note..."}
-                                  </p>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    onDeleteNote(note.id);
-                                  }}
-                                  className="shrink-0 rounded p-1 mt-0.5"
-                                  aria-label={`Delete ${note.title || "note"}`}
-                                  style={{ color: "#ef4444" }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => onSelectNote(note.id)}
-                                className="w-full text-center"
+                          <ContextMenu>
+                            <ContextMenuTrigger>
+                              <div
+                                className={cn(
+                                  "note-item relative w-full p-3 text-left transition-all overflow-hidden",
+                                  selectedNoteId === note.id && "active",
+                                  !isOpen && "flex justify-center p-2"
+                                )}
                               >
-                                <FileText className="h-5 w-5 opacity-70" />
-                              </button>
-                            )}
-                          </div>
+                                {isOpen ? (
+                                  <div className="flex items-start gap-1 w-full overflow-hidden">
+                                    <button
+                                      onClick={() => onSelectNote(note.id)}
+                                      className="min-w-0 flex-1 overflow-hidden text-left"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <FileText className="h-4 w-4 shrink-0 opacity-70" />
+                                        <span className="truncate font-medium">
+                                          {note.title || "Untitled"}
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 truncate text-xs opacity-60 pl-6">
+                                        {note.content?.slice(0, 50) || "Empty note..."}
+                                      </p>
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        onDeleteNote(note.id);
+                                      }}
+                                      className="shrink-0 rounded p-1 mt-0.5"
+                                      aria-label={`Delete ${note.title || "note"}`}
+                                      style={{ color: "#ef4444" }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => onSelectNote(note.id)}
+                                    className="w-full text-center"
+                                  >
+                                    <FileText className="h-5 w-5 opacity-70" />
+                                  </button>
+                                )}
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem onClick={() => onSelectNote(note.id)}>
+                                <FileText className="mr-2 h-4 w-4" /> Open Note
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem 
+                                variant="destructive" 
+                                onClick={() => onDeleteNote(note.id)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete Note
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         </DraggableNoteItem>
                       ))
                     )}
