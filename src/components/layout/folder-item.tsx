@@ -10,6 +10,14 @@ import {
   FileText,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+  ContextMenuLabel,
+} from "~/components/ui/context-menu";
 
 interface FolderWithCount {
   id: string;
@@ -184,84 +192,100 @@ export function FolderItem({
   return (
     <div>
       {/* Folder header row — entire row is clickable to toggle */}
-      <div
-        onClick={!isEditing ? onToggle : undefined}
-        className={cn(
-          "note-item relative w-full p-3 text-left transition-all overflow-hidden cursor-pointer",
-          isExpanded && "active"
-        )}
-      >
-        <div className="flex items-center gap-1 w-full overflow-hidden">
-          {/* Expand/collapse chevron icon */}
-          <span className="shrink-0 p-0.5">
-            {isExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 opacity-70" />
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <div
+            onClick={!isEditing ? onToggle : undefined}
+            className={cn(
+              "note-item relative w-full p-3 text-left transition-all overflow-hidden cursor-pointer",
+              isExpanded && "active"
             )}
-          </span>
-
-          {/* Folder icon */}
-          <span className="shrink-0">
-            {isExpanded ? (
-              <FolderOpen className="h-4 w-4 opacity-70" />
-            ) : (
-              <Folder className="h-4 w-4 opacity-70" />
-            )}
-          </span>
-
-          {/* Folder name or inline edit input */}
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              onClick={(e) => e.stopPropagation()}
-              maxLength={50}
-              className="min-w-0 flex-1 bg-black/30 border border-white/20 rounded px-1.5 py-0.5 text-sm text-[#e0d4c0] outline-none focus:border-white/40"
-              aria-label="Rename folder"
-            />
-          ) : (
-            <span
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                onStartEdit();
-              }}
-              className="min-w-0 flex-1 overflow-hidden text-left"
-            >
-              <span className="truncate font-medium text-sm block">
-                {folder.name}
+          >
+            <div className="flex items-center gap-1 w-full overflow-hidden">
+              {/* Expand/collapse chevron icon */}
+              <span className="shrink-0 p-0.5">
+                {isExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 opacity-70" />
+                )}
               </span>
-            </span>
-          )}
 
-          {/* Note count badge */}
-          {!isEditing && (
-            <span className="shrink-0 text-[10px] opacity-60 bg-white/10 rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-              {folder._count.notes}
-            </span>
-          )}
+              {/* Folder icon */}
+              <span className="shrink-0">
+                {isExpanded ? (
+                  <FolderOpen className="h-4 w-4 opacity-70" />
+                ) : (
+                  <Folder className="h-4 w-4 opacity-70" />
+                )}
+              </span>
 
-          {/* Delete button */}
-          {!isEditing && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onDelete();
-              }}
-              className="shrink-0 rounded p-1"
-              aria-label={`Delete folder ${folder.name}`}
-              style={{ color: "#ef4444" }}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
+              {/* Folder name or inline edit input */}
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onBlur={handleBlur}
+                  onClick={(e) => e.stopPropagation()}
+                  maxLength={50}
+                  className="min-w-0 flex-1 bg-black/30 border border-white/20 rounded px-1.5 py-0.5 text-sm text-[#e0d4c0] outline-none focus:border-white/40"
+                  aria-label="Rename folder"
+                />
+              ) : (
+                <span
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    onStartEdit();
+                  }}
+                  className="min-w-0 flex-1 overflow-hidden text-left"
+                >
+                  <span className="truncate font-medium text-sm block">
+                    {folder.name}
+                  </span>
+                </span>
+              )}
+
+              {/* Note count badge */}
+              {!isEditing && (
+                <span className="shrink-0 text-[10px] opacity-60 bg-white/10 rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                  {folder._count.notes}
+                </span>
+              )}
+
+              {/* Delete button */}
+              {!isEditing && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onDelete();
+                  }}
+                  className="shrink-0 rounded p-1"
+                  aria-label={`Delete folder ${folder.name}`}
+                  style={{ color: "#ef4444" }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuLabel>{folder.name}</ContextMenuLabel>
+          <ContextMenuItem onClick={onToggle}>
+            {isExpanded ? "Collapse" : "Expand"}
+          </ContextMenuItem>
+          <ContextMenuItem onClick={onStartEdit}>Rename Folder</ContextMenuItem>
+          <ContextMenuItem onClick={onNewNote}>New Note in Folder</ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onClick={onDelete}>
+            <Trash2 className="mr-2 h-4 w-4" /> Delete Folder
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {/* Expanded folder contents */}
       {isExpanded && (
@@ -277,42 +301,57 @@ export function FolderItem({
           ) : (
             notes.map((note) => {
               const noteContent = (
-                <div
-                  key={note.id}
-                  className={cn(
-                    "note-item relative w-full p-2 text-left transition-all overflow-hidden",
-                    selectedNoteId === note.id && "active"
-                  )}
-                >
-                  <div className="flex items-start gap-1 w-full overflow-hidden">
-                    <button
-                      onClick={() => onSelectNote(note.id)}
-                      className="min-w-0 flex-1 overflow-hidden text-left"
+                <ContextMenu key={note.id}>
+                  <ContextMenuTrigger>
+                    <div
+                      className={cn(
+                        "note-item relative w-full p-2 text-left transition-all overflow-hidden",
+                        selectedNoteId === note.id && "active"
+                      )}
                     >
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                        <span className="truncate font-medium text-sm">
-                          {note.title || "Untitled"}
-                        </span>
+                      <div className="flex items-start gap-1 w-full overflow-hidden">
+                        <button
+                          onClick={() => onSelectNote(note.id)}
+                          className="min-w-0 flex-1 overflow-hidden text-left"
+                        >
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                            <span className="truncate font-medium text-sm">
+                              {note.title || "Untitled"}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-[11px] opacity-60 pl-5">
+                            {note.content?.slice(0, 50) || "Empty note..."}
+                          </p>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onDeleteNote(note.id);
+                          }}
+                          className="shrink-0 rounded p-1 mt-0.5"
+                          aria-label={`Delete ${note.title || "note"}`}
+                          style={{ color: "#ef4444" }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                      <p className="mt-0.5 truncate text-[11px] opacity-60 pl-5">
-                        {note.content?.slice(0, 50) || "Empty note..."}
-                      </p>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onDeleteNote(note.id);
-                      }}
-                      className="shrink-0 rounded p-1 mt-0.5"
-                      aria-label={`Delete ${note.title || "note"}`}
-                      style={{ color: "#ef4444" }}
+                    </div>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem onClick={() => onSelectNote(note.id)}>
+                      <FileText className="mr-2 h-4 w-4" /> Open Note
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem 
+                      variant="destructive" 
+                      onClick={() => onDeleteNote(note.id)}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete Note
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               );
 
               return renderNoteItem

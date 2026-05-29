@@ -80,9 +80,26 @@ export const authConfig = {
       }
       return token;
     },
-    session({ session, token }) {
+    async session({ session, token }) {
       if (token.sub) {
-        session.user.id = token.sub;
+        // "Better" Method: Selalu verifikasi user ke DB untuk mencegah stale session (ID hantu)
+        // Ini juga berfungsi untuk menyinkronkan data profil terbaru dari DB ke Session.
+        const user = await db.user.findUnique({
+          where: { id: token.sub },
+          select: { id: true, name: true, email: true, image: true },
+        });
+
+        if (user) {
+          session.user.id = user.id;
+          session.user.name = user.name ?? undefined;
+          session.user.email = user.email ?? "";
+          session.user.image = user.image ?? undefined;
+        } else {
+          // Jika user sudah tidak ada di DB (misal setelah reset DB),
+          // kita kosongkan data user agar useSession() me-return 'unauthenticated'.
+          // @ts-expect-error - sengaja dibuat null untuk mentrigger logout di UI
+          session.user = null;
+        }
       }
       return session;
     },

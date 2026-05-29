@@ -2,10 +2,19 @@
 
 import * as React from "react";
 import { cn } from "~/lib/utils";
-import { Loader2, Bold, Italic, Heading2, List, ListOrdered, Quote } from "lucide-react";
+import { Loader2, Bold, Italic, Heading2, List, ListOrdered, Quote, Share2 } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
+import { ShareNoteModal } from "./share-note-modal";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+  ContextMenuLabel,
+} from "~/components/ui/context-menu";
 
 interface NotepadContainerProps {
   noteId?: string | null;
@@ -90,7 +99,13 @@ function TitleEditor({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 /** Floating toolbar that sits beside the paper like tools on a desk */
-function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+function EditorToolbar({ 
+  editor, 
+  onShare 
+}: { 
+  editor: ReturnType<typeof useEditor>;
+  onShare: () => void;
+}) {
   if (!editor) return null;
 
   const tools = [
@@ -152,6 +167,18 @@ function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
           <tool.icon className="h-4 w-4" />
         </button>
       ))}
+
+      {/* Share Tool */}
+      <div className="h-[1px] w-full bg-[#1a0f0a] my-1 opacity-20" />
+      <button
+        type="button"
+        onClick={onShare}
+        title="Share Aesthetic Card"
+        aria-label="Share"
+        className="notepad-toolbar-btn"
+      >
+        <Share2 className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -169,6 +196,9 @@ export function NotepadContainer({
 }: NotepadContainerProps) {
   // With `key={noteId}` set by parent, this component remounts on note switch.
   // So the editor is always created with the correct initial content — no sync needed.
+
+  const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
+  const [selectedText, setSelectedText] = React.useState("");
 
   const editor = useEditor({
     extensions: [
@@ -191,6 +221,24 @@ export function NotepadContainer({
       onContentChange(md);
     },
   });
+
+  const handleShare = () => {
+    if (!editor) return;
+    const { from, to, empty } = editor.state.selection;
+    
+    // If no selection, use a generic placeholder or the first paragraph
+    if (empty) {
+      // Maybe we can get the first 200 characters if nothing is selected?
+      // For now, let's just use what's there or prompt to select.
+      const text = editor.getText().slice(0, 300);
+      setSelectedText(text);
+    } else {
+      const text = editor.state.doc.textBetween(from, to, " ");
+      setSelectedText(text);
+    }
+    
+    setIsShareModalOpen(true);
+  };
 
   if (!noteId) {
     return (
@@ -215,7 +263,7 @@ export function NotepadContainer({
   return (
     <div className="notepad-with-toolbar w-full">
       {/* Toolbar — sits to the right of the paper like tools on a desk */}
-      <EditorToolbar editor={editor} />
+      <EditorToolbar editor={editor} onShare={handleShare} />
 
       <div
         className={cn(
@@ -252,7 +300,27 @@ export function NotepadContainer({
 
         {/* WYSIWYG editor content area */}
         <div className="notepad-body relative min-h-[50vh] md:min-h-[650px]">
-          <EditorContent editor={editor} />
+          <ContextMenu>
+            <ContextMenuTrigger>
+              <EditorContent editor={editor} />
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-56">
+              <ContextMenuLabel>Editor Actions</ContextMenuLabel>
+              <ContextMenuItem 
+                onClick={handleShare}
+                className="flex items-center gap-2"
+              >
+                <Share2 className="h-4 w-4" /> Share Aesthetic Card
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem 
+                onClick={() => editor?.chain().focus().run()}
+                className="opacity-50"
+              >
+                Focus Editor
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         </div>
 
         {/* Author name */}
@@ -267,6 +335,14 @@ export function NotepadContainer({
           </div>
         )}
       </div>
+
+      <ShareNoteModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        selectedText={selectedText}
+        noteTitle={title}
+        authorName={authorName}
+      />
     </div>
   );
 }

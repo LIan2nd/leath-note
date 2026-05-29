@@ -1,0 +1,30 @@
+{
+  "name": "Leath Note",
+  "short_name": "LeathNote",
+  "description": "A personal skeuomorphic notepad with AI capabilities.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2d1f14",
+  "theme_color": "#2d1f14",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/leath-note-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/leath-note-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/leath-note-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

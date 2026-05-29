@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: leath-note-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: leath-note
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - DATABASE_URL=postgresql://postgres:root@db:5432/leath-note
+        - AUTH_SECRET=${AUTH_SECRET}
+        - AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID}
+        - AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET}
+        - NEXT_PUBLIC_AI_PROVIDER=${NEXT_PUBLIC_AI_PROVIDER}
+        - NEXT_PUBLIC_AI_MODEL=${NEXT_PUBLIC_AI_MODEL}
+    container_name: leath-note-app
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - AUTH_TRUST_HOST=true
+      - DATABASE_URL=postgresql://postgres:root@db:5432/leath-note
+      - DIRECT_URL=postgresql://postgres:root@db:5432/leath-note
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:

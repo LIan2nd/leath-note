@@ -4,6 +4,7 @@ import { type Metadata } from "next";
 import { Geist } from "next/font/google";
 
 import { Providers } from "~/components/providers";
+import { PWARegistration } from "~/components/pwa-registration";
 
 const APP_NAME = "Leath Notes";
 const APP_DESCRIPTION =
@@ -27,6 +28,12 @@ export const metadata: Metadata = {
     "personal",
     "AI assistant",
   ],
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: APP_NAME,
+  },
   icons: {
     icon: "/leath-note-logo.png",
     shortcut: "/leath-note-logo.png",
@@ -68,7 +75,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable}`}>
       <body className="overflow-x-hidden" suppressHydrationWarning>
-        <Providers>{children}</Providers>
+        <Providers>
+          <PWARegistration />
+          {children}
+        </Providers>
       </body>
     </html>
   );
