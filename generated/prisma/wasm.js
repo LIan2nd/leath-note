@@ -202,7 +202,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\xampp\\htdocs\\_project\\leath-note\\generated\\prisma",
+      "value": "/mnt/c/xampp/htdocs/_project/leath-note/generated/prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -211,12 +211,12 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "windows",
+        "value": "debian-openssl-3.0.x",
         "native": true
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "C:\\xampp\\htdocs\\_project\\leath-note\\prisma\\schema.prisma",
+    "sourceFilePath": "/mnt/c/xampp/htdocs/_project/leath-note/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
