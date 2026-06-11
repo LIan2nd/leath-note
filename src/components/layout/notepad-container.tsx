@@ -3,9 +3,11 @@
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Loader2, Bold, Italic, Heading2, List, ListOrdered, Quote, Share2 } from "lucide-react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
+import Heading from "@tiptap/extension-heading";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
+import { initializeContent, processContentChange } from "~/lib/date-history";
 import { ShareNoteModal } from "./share-note-modal";
 import {
   ContextMenu,
@@ -15,6 +17,37 @@ import {
   ContextMenuSeparator,
   ContextMenuLabel,
 } from "~/components/ui/context-menu";
+
+/** Custom Tiptap Node for Date Headers */
+const ReadonlyDateHeading = Heading.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer((props) => {
+      const text = props.node.textContent;
+      // Check if it's a date header: starts with calendar emoji
+      if (text.startsWith("📅")) {
+        return (
+          <NodeViewWrapper
+            className="flex items-center gap-2 my-6 opacity-60 select-none"
+            contentEditable={false}
+          >
+            <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
+            <span className="text-xs font-bold font-mono text-[#8a8070] tracking-widest uppercase">
+              {text}
+            </span>
+            <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
+          </NodeViewWrapper>
+        );
+      }
+      
+      // Fallback for normal headings
+      return (
+        <NodeViewWrapper>
+          <NodeViewContent as={`h${props.node.attrs.level}`} />
+        </NodeViewWrapper>
+      );
+    });
+  },
+});
 
 interface NotepadContainerProps {
   noteId?: string | null;
@@ -200,16 +233,41 @@ export function NotepadContainer({
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [selectedText, setSelectedText] = React.useState("");
 
+  // ─── Date History Logic ─────────────────────────────────────────────────
+  // Initialize content with date headers (wraps legacy/new content)
+  const effectiveCreatedAt = createdAt ?? new Date();
+  const initializedContent = React.useMemo(
+    () => initializeContent(content, effectiveCreatedAt),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [], // Only on mount (key={noteId} causes remount on switch)
+  );
+
+  // Notify parent of initialized content if it changed (e.g. legacy wrap)
+  React.useEffect(() => {
+    if (initializedContent !== content) {
+      onContentChange(initializedContent);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
+
+  // Track the previous content for cross-section edit detection
+  const prevContentRef = React.useRef(initializedContent);
+  // Guard: skip processing when we programmatically set editor content
+  const skipNextProcessRef = React.useRef(false);
+
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        heading: false, // Disable default heading
+      }),
+      ReadonlyDateHeading,
       Markdown.configure({
         html: false,
         transformPastedText: true,
         transformCopiedText: true,
       }),
     ],
-    content,
+    content: initializedContent,
     editorProps: {
       attributes: {
         class: "notepad-editor",
@@ -217,8 +275,39 @@ export function NotepadContainer({
     },
     onUpdate: ({ editor: e }) => {
       const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
-      const md = storage.markdown!.getMarkdown();
-      onContentChange(md);
+      const rawMd = storage.markdown!.getMarkdown();
+
+      // Skip processing if this update was triggered by our own setContent
+      if (skipNextProcessRef.current) {
+        skipNextProcessRef.current = false;
+        prevContentRef.current = rawMd;
+        onContentChange(rawMd);
+        return;
+      }
+
+      // Process through date-history logic
+      const processed = processContentChange(
+        prevContentRef.current,
+        rawMd,
+        effectiveCreatedAt,
+      );
+
+      // If processing changed the content, update editor
+      if (processed !== rawMd) {
+        skipNextProcessRef.current = true;
+        // Save cursor position
+        const { from, to } = e.state.selection;
+        e.commands.setContent(processed);
+        // Restore cursor (clamp to valid range)
+        const maxPos = e.state.doc.content.size;
+        e.commands.setTextSelection({
+          from: Math.min(from, maxPos),
+          to: Math.min(to, maxPos),
+        });
+      }
+
+      prevContentRef.current = processed;
+      onContentChange(processed);
     },
   });
 
