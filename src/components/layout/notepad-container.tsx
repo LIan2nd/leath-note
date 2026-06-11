@@ -40,9 +40,11 @@ const ReadonlyDateHeading = Heading.extend({
       }
       
       // Fallback for normal headings
+      const level = props.node.attrs.level as 1 | 2 | 3 | 4 | 5 | 6;
+      const Tag = `h${level}` as const;
       return (
         <NodeViewWrapper>
-          <NodeViewContent as={`h${props.node.attrs.level}`} />
+          <NodeViewContent as={Tag as any} />
         </NodeViewWrapper>
       );
     });
