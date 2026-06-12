@@ -195,7 +195,6 @@ function EditorToolbar({
       label: "Bold",
       shortcut: "Ctrl+B",
       action: () => {
-        // @ts-expect-error Tiptap module augmentation bug
         editor.chain().focus().toggleBold().run();
       },
       isActive: editor.isActive("bold"),
@@ -205,7 +204,6 @@ function EditorToolbar({
       label: "Italic",
       shortcut: "Ctrl+I",
       action: () => {
-        // @ts-expect-error Tiptap module augmentation bug
         editor.chain().focus().toggleItalic().run();
       },
       isActive: editor.isActive("italic"),
@@ -215,7 +213,6 @@ function EditorToolbar({
       label: "Heading",
       shortcut: "Ctrl+Alt+2",
       action: () => {
-        // @ts-expect-error Tiptap module augmentation bug
         editor.chain().focus().toggleHeading({ level: 2 }).run();
       },
       isActive: editor.isActive("heading", { level: 2 }),
@@ -225,7 +222,6 @@ function EditorToolbar({
       label: "Bullet List",
       shortcut: "Ctrl+Shift+8",
       action: () => {
-        // @ts-expect-error Tiptap module augmentation bug
         editor.chain().focus().toggleBulletList().run();
       },
       isActive: editor.isActive("bulletList"),
@@ -235,7 +231,6 @@ function EditorToolbar({
       label: "Numbered List",
       shortcut: "Ctrl+Shift+7",
       action: () => {
-        // @ts-expect-error Tiptap module augmentation bug
         editor.chain().focus().toggleOrderedList().run();
       },
       isActive: editor.isActive("orderedList"),
@@ -245,7 +240,6 @@ function EditorToolbar({
       label: "Quote",
       shortcut: "Ctrl+Shift+B",
       action: () => {
-        // @ts-expect-error Tiptap module augmentation bug
         editor.chain().focus().toggleBlockquote().run();
       },
       isActive: editor.isActive("blockquote"),
@@ -322,7 +316,6 @@ export function NotepadContainer({
   const skipNextProcessRef = React.useRef(false);
 
   const editor = useEditor({
-    // @ts-expect-error Tiptap core version mismatch
     extensions: [
       StarterKit.configure({
         heading: false, // Disable default heading
