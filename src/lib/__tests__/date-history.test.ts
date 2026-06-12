@@ -121,21 +121,21 @@ describe("initializeContent", () => {
 
 describe("processContentChange", () => {
   it("does nothing for empty content", () => {
-    expect(processContentChange("Hello", "", june10, june11)).toBe("");
+    expect(processContentChange("Hello", "Hello", "", june10, june11)).toBe("");
   });
 
   it("adds edit tag when editing the implicit first section", () => {
     const old = "Old text\n\n## 📅 11/06/2026\n\nNew";
     const newC = "Old text changed\n\n## 📅 11/06/2026\n\nNew";
-    const result = processContentChange(old, newC, june10, june11);
-    expect(result).toContain("Old text changed\n\n(✏️ diedit: 11/06/2026)");
+    const result = processContentChange(old, old, newC, june10, june11);
+    expect(result).toContain("Old text changed\n\n###### ✏️ diedit: 11/06/2026");
     expect(result).toContain("## 📅 11/06/2026\n\nNew");
   });
 
   it("does not add edit tag when editing today's section", () => {
     const old = "Old text\n\n## 📅 11/06/2026\n\nNew";
     const newC = "Old text\n\n## 📅 11/06/2026\n\nNew edit";
-    const result = processContentChange(old, newC, june10, june11);
+    const result = processContentChange(old, old, newC, june10, june11);
     expect(result).not.toContain("✏️ diedit");
     expect(result).toContain("New edit");
   });

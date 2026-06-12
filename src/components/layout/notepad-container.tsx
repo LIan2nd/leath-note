@@ -18,16 +18,50 @@ import {
   ContextMenuLabel,
 } from "~/components/ui/context-menu";
 
-/** Custom Tiptap Node for Date Headers */
 const ReadonlyDateHeading = Heading.extend({
+  addKeyboardShortcuts() {
+    return {
+      Backspace: ({ editor }) => {
+        const { selection } = editor.state;
+        const { $anchor, empty } = selection;
+
+        if (!empty) return false;
+
+        // Check if cursor is at the very beginning of a textblock
+        if ($anchor.parentOffset === 0) {
+          const beforePos = $anchor.before();
+          if (beforePos > 0) {
+            const $before = editor.state.doc.resolve(beforePos);
+            const nodeBefore = $before.nodeBefore;
+            if (
+              nodeBefore &&
+              nodeBefore.type.name === "heading" &&
+              nodeBefore.textContent.startsWith("📅")
+            ) {
+              // The cursor is directly after our date heading!
+              // Returning true prevents the default backspace behavior.
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+    };
+  },
   addNodeView() {
     return ReactNodeViewRenderer((props) => {
       const text = props.node.textContent;
+      
       // Check if it's a date header: starts with calendar emoji
       if (text.startsWith("📅")) {
         return (
           <NodeViewWrapper
-            className="flex items-center gap-2 my-6 opacity-60 select-none"
+            className="flex items-center gap-2 opacity-60 select-none"
+            style={{ 
+              height: "calc(var(--line-height) * 2)",
+              margin: 0,
+              padding: 0
+            }}
             contentEditable={false}
           >
             <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
@@ -35,6 +69,18 @@ const ReadonlyDateHeading = Heading.extend({
               {text}
             </span>
             <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
+          </NodeViewWrapper>
+        );
+      }
+      
+      // Check if it's an edit marker: starts with pencil emoji
+      if (text.startsWith("✏️ diedit:")) {
+        return (
+          <NodeViewWrapper
+            as="h6"
+            contentEditable={false}
+          >
+            {text}
           </NodeViewWrapper>
         );
       }
@@ -148,42 +194,60 @@ function EditorToolbar({
       icon: Bold,
       label: "Bold",
       shortcut: "Ctrl+B",
-      action: () => editor.chain().focus().toggleBold().run(),
+      action: () => {
+        // @ts-expect-error Tiptap module augmentation bug
+        editor.chain().focus().toggleBold().run();
+      },
       isActive: editor.isActive("bold"),
     },
     {
       icon: Italic,
       label: "Italic",
       shortcut: "Ctrl+I",
-      action: () => editor.chain().focus().toggleItalic().run(),
+      action: () => {
+        // @ts-expect-error Tiptap module augmentation bug
+        editor.chain().focus().toggleItalic().run();
+      },
       isActive: editor.isActive("italic"),
     },
     {
       icon: Heading2,
       label: "Heading",
       shortcut: "Ctrl+Alt+2",
-      action: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      action: () => {
+        // @ts-expect-error Tiptap module augmentation bug
+        editor.chain().focus().toggleHeading({ level: 2 }).run();
+      },
       isActive: editor.isActive("heading", { level: 2 }),
     },
     {
       icon: List,
       label: "Bullet List",
       shortcut: "Ctrl+Shift+8",
-      action: () => editor.chain().focus().toggleBulletList().run(),
+      action: () => {
+        // @ts-expect-error Tiptap module augmentation bug
+        editor.chain().focus().toggleBulletList().run();
+      },
       isActive: editor.isActive("bulletList"),
     },
     {
       icon: ListOrdered,
       label: "Numbered List",
       shortcut: "Ctrl+Shift+7",
-      action: () => editor.chain().focus().toggleOrderedList().run(),
+      action: () => {
+        // @ts-expect-error Tiptap module augmentation bug
+        editor.chain().focus().toggleOrderedList().run();
+      },
       isActive: editor.isActive("orderedList"),
     },
     {
       icon: Quote,
       label: "Quote",
       shortcut: "Ctrl+Shift+B",
-      action: () => editor.chain().focus().toggleBlockquote().run(),
+      action: () => {
+        // @ts-expect-error Tiptap module augmentation bug
+        editor.chain().focus().toggleBlockquote().run();
+      },
       isActive: editor.isActive("blockquote"),
     },
   ];
@@ -258,6 +322,7 @@ export function NotepadContainer({
   const skipNextProcessRef = React.useRef(false);
 
   const editor = useEditor({
+    // @ts-expect-error Tiptap core version mismatch
     extensions: [
       StarterKit.configure({
         heading: false, // Disable default heading
@@ -275,6 +340,13 @@ export function NotepadContainer({
         class: "notepad-editor",
       },
     },
+    onCreate: ({ editor: e }) => {
+      const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
+      const rawMd = storage.markdown!.getMarkdown();
+      // Set the initial baseline to Tiptap's normalized markdown
+      // so we don't trigger a fake edit if it reformats list items, etc.
+      prevContentRef.current = rawMd;
+    },
     onUpdate: ({ editor: e }) => {
       const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
       const rawMd = storage.markdown!.getMarkdown();
@@ -289,6 +361,7 @@ export function NotepadContainer({
 
       // Process through date-history logic
       const processed = processContentChange(
+        initializedContent,
         prevContentRef.current,
         rawMd,
         effectiveCreatedAt,

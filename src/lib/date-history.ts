@@ -128,19 +128,27 @@ export function sectionsToMarkdown(sections: DateSection[]): string {
 
 // ─── Content Transformation ─────────────────────────────────────────────────
 
+const EDIT_TAG_REGEX = /(?:^|\n+)(?:###### ✏️ diedit: \d{2}\/\d{2}\/\d{4}|\(✏️ diedit: \d{2}\/\d{2}\/\d{4}\))\s*$/;
+
+function stripEditTags(text: string): string {
+  return text.replace(EDIT_TAG_REGEX, "").trim();
+}
+
 /**
  * Main function: process a content change from the editor.
  *
  * Compares old and new content section-by-section:
- * - If old sections were modified and their date ≠ today, append "(✏️ diedit: DD/MM/YYYY)".
+ * - If old sections were modified and their date ≠ today, append "###### ✏️ diedit: DD/MM/YYYY".
  * - Returns the processed content string.
  *
+ * @param baselineContent - The DB state (to check if text actually changed)
  * @param oldContent - The previous saved content
  * @param newContent - The new content from the editor
  * @param createdAt  - The note's creation date
  * @param today      - Override for testing; defaults to new Date()
  */
 export function processContentChange(
+  baselineContent: string,
   oldContent: string,
   newContent: string,
   createdAt: Date,
@@ -163,38 +171,68 @@ export function processContentChange(
     oldByDate.set(s.dateStr, existing ? `${existing}\n\n${s.content}` : s.content);
   }
 
+  const baselineSections = parseDateSections(baselineContent, createdAt);
+  const baselineByDate = new Map<string, string>();
+  for (const s of baselineSections) {
+    const existing = baselineByDate.get(s.dateStr) || "";
+    baselineByDate.set(s.dateStr, existing ? `${existing}\n\n${s.content}` : s.content);
+  }
+
+  // PROTECT DATE HEADERS: If any date section from oldContent is missing in newContent,
+  // it means the user deleted or modified the header. Revert the deletion by returning oldContent.
+  const newDates = new Set(newSections.map((s) => s.dateStr));
+  for (const oldDate of oldByDate.keys()) {
+    // Skip the implicit first section (which doesn't have an explicit header)
+    // Wait, the first section is also in oldDates, and parseDateSections always creates it in newSections too.
+    if (!newDates.has(oldDate)) {
+      return oldContent;
+    }
+  }
+
+  let hasChanges = false;
+
   // Check each new section against old content
   const processedSections: DateSection[] = newSections.map((newSec) => {
     const oldSectionContent = oldByDate.get(newSec.dateStr);
+    const baselineSectionContent = baselineByDate.get(newSec.dateStr) || "";
 
     // Section existed before and its date is NOT today
     if (
       oldSectionContent !== undefined &&
-      newSec.dateStr !== todayStr &&
-      newSec.content.trim() !== oldSectionContent.trim()
+      newSec.dateStr !== todayStr
     ) {
-      // Content was modified in an old section — add edit tag
-      const editTag = `(✏️ diedit: ${todayStr})`;
-      const trimmedContent = newSec.content.trimEnd();
+      const cleanNew = stripEditTags(newSec.content);
+      const cleanBaseline = stripEditTags(baselineSectionContent);
 
-      // Check if an edit tag for today already exists at the end
-      if (trimmedContent.endsWith(editTag)) {
-        return newSec; // Already tagged
+      if (cleanNew !== cleanBaseline) {
+        // ACTUAL change detected!
+        const editTag = `###### ✏️ diedit: ${todayStr}`;
+        const cleanContent = newSec.content.replace(EDIT_TAG_REGEX, "").trimEnd();
+
+        hasChanges = true;
+        return {
+          ...newSec,
+          content: `${cleanContent}\n\n${editTag}`,
+        };
+      } else {
+        // NO actual change. Restore to baseline content exactly to avoid spurious changes!
+        // This gracefully removes the edit tag if they undo their change back to original!
+        if (newSec.content !== baselineSectionContent) {
+           hasChanges = true;
+           return {
+             ...newSec,
+             content: baselineSectionContent,
+           };
+        }
       }
-
-      // Remove any existing edit tag for today and re-append at the end
-      const cleanContent = trimmedContent
-        .replace(new RegExp(`\\s*\\(✏️ diedit: ${escapeRegex(todayStr)}\\)`, "g"), "")
-        .trimEnd();
-
-      return {
-        ...newSec,
-        content: `${cleanContent}\n\n${editTag}`,
-      };
     }
 
     return newSec;
   });
+
+  if (!hasChanges) {
+    return newContent;
+  }
 
   return sectionsToMarkdown(processedSections);
 }
@@ -213,18 +251,28 @@ export function initializeContent(content: string, createdAt: Date, today?: Date
     return content; // No headers for entirely empty notes
   }
 
-  const sections = parseDateSections(content, createdAt);
-  if (sections.length === 0) return content;
+  let cleanedContent = content;
+  while (true) {
+    const match = /(?:^|\n)(## 📅 \d{2}\/\d{2}\/\d{4})\s*$/.exec(cleanedContent);
+    if (match) {
+      cleanedContent = cleanedContent.substring(0, match.index).trimEnd();
+    } else {
+      break;
+    }
+  }
+
+  const sections = parseDateSections(cleanedContent, createdAt);
+  if (sections.length === 0) return cleanedContent;
 
   const lastSection = sections[sections.length - 1]!;
   
   // If the last section's date is not today, and today is also not the createdAt day,
   // we append a new header for today.
   if (lastSection.dateStr !== todayStr && createdStr !== todayStr) {
-    return `${content.trimEnd()}\n\n${buildDateHeader(now)}\n\n`;
+    return `${cleanedContent.trimEnd()}\n\n${buildDateHeader(now)}\n\n`;
   }
 
-  return content;
+  return cleanedContent;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
