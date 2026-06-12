@@ -195,7 +195,7 @@ function EditorToolbar({
       label: "Bold",
       shortcut: "Ctrl+B",
       action: () => {
-        editor.chain().focus().toggleBold().run();
+        (editor.chain().focus() as any).toggleBold().run();
       },
       isActive: editor.isActive("bold"),
     },
@@ -204,7 +204,7 @@ function EditorToolbar({
       label: "Italic",
       shortcut: "Ctrl+I",
       action: () => {
-        editor.chain().focus().toggleItalic().run();
+        (editor.chain().focus() as any).toggleItalic().run();
       },
       isActive: editor.isActive("italic"),
     },
@@ -213,7 +213,7 @@ function EditorToolbar({
       label: "Heading",
       shortcut: "Ctrl+Alt+2",
       action: () => {
-        editor.chain().focus().toggleHeading({ level: 2 }).run();
+        (editor.chain().focus() as any).toggleHeading({ level: 2 }).run();
       },
       isActive: editor.isActive("heading", { level: 2 }),
     },
@@ -222,7 +222,7 @@ function EditorToolbar({
       label: "Bullet List",
       shortcut: "Ctrl+Shift+8",
       action: () => {
-        editor.chain().focus().toggleBulletList().run();
+        (editor.chain().focus() as any).toggleBulletList().run();
       },
       isActive: editor.isActive("bulletList"),
     },
@@ -231,7 +231,7 @@ function EditorToolbar({
       label: "Numbered List",
       shortcut: "Ctrl+Shift+7",
       action: () => {
-        editor.chain().focus().toggleOrderedList().run();
+        (editor.chain().focus() as any).toggleOrderedList().run();
       },
       isActive: editor.isActive("orderedList"),
     },
@@ -240,7 +240,7 @@ function EditorToolbar({
       label: "Quote",
       shortcut: "Ctrl+Shift+B",
       action: () => {
-        editor.chain().focus().toggleBlockquote().run();
+        (editor.chain().focus() as any).toggleBlockquote().run();
       },
       isActive: editor.isActive("blockquote"),
     },
@@ -326,7 +326,7 @@ export function NotepadContainer({
         transformPastedText: true,
         transformCopiedText: true,
       }),
-    ],
+    ] as any,
     content: initializedContent,
     editorProps: {
       attributes: {
