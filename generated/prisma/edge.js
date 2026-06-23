@@ -202,7 +202,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/mnt/c/xampp/htdocs/_project/leath-note/generated/prisma",
+      "value": "C:\\xampp\\htdocs\\_project\\leath-note\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -211,12 +211,12 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "debian-openssl-3.0.x",
+        "value": "windows",
         "native": true
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/mnt/c/xampp/htdocs/_project/leath-note/prisma/schema.prisma",
+    "sourceFilePath": "C:\\xampp\\htdocs\\_project\\leath-note\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
@@ -230,6 +230,7 @@ const config = {
     "db"
   ],
   "activeProvider": "postgresql",
+  "postinstall": false,
   "inlineDatasources": {
     "db": {
       "url": {

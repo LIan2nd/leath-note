@@ -3,9 +3,11 @@
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Loader2, Bold, Italic, Heading2, List, ListOrdered, Quote, Share2 } from "lucide-react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
+import Heading from "@tiptap/extension-heading";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
+import { initializeContent, processContentChange } from "~/lib/date-history";
 import { ShareNoteModal } from "./share-note-modal";
 import {
   ContextMenu,
@@ -15,6 +17,85 @@ import {
   ContextMenuSeparator,
   ContextMenuLabel,
 } from "~/components/ui/context-menu";
+
+const ReadonlyDateHeading = Heading.extend({
+  addKeyboardShortcuts() {
+    return {
+      Backspace: ({ editor }) => {
+        const { selection } = editor.state;
+        const { $anchor, empty } = selection;
+
+        if (!empty) return false;
+
+        // Check if cursor is at the very beginning of a textblock
+        if ($anchor.parentOffset === 0) {
+          const beforePos = $anchor.before();
+          if (beforePos > 0) {
+            const $before = editor.state.doc.resolve(beforePos);
+            const nodeBefore = $before.nodeBefore;
+            if (
+              nodeBefore &&
+              nodeBefore.type.name === "heading" &&
+              nodeBefore.textContent.startsWith("📅")
+            ) {
+              // The cursor is directly after our date heading!
+              // Returning true prevents the default backspace behavior.
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+    };
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer((props) => {
+      const text = props.node.textContent;
+      
+      // Check if it's a date header: starts with calendar emoji
+      if (text.startsWith("📅")) {
+        return (
+          <NodeViewWrapper
+            className="flex items-center gap-2 opacity-60 select-none"
+            style={{ 
+              height: "calc(var(--line-height) * 2)",
+              margin: 0,
+              padding: 0
+            }}
+            contentEditable={false}
+          >
+            <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
+            <span className="text-xs font-bold font-mono text-[#8a8070] tracking-widest uppercase">
+              {text}
+            </span>
+            <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
+          </NodeViewWrapper>
+        );
+      }
+      
+      // Check if it's an edit marker: starts with pencil emoji
+      if (text.startsWith("✏️ diedit:")) {
+        return (
+          <NodeViewWrapper
+            as="h6"
+            contentEditable={false}
+          >
+            {text}
+          </NodeViewWrapper>
+        );
+      }
+      
+      // Fallback for normal headings
+      const level = props.node.attrs.level as 1 | 2 | 3 | 4 | 5 | 6;
+      const Tag = `h${level}` as const;
+      return (
+        <NodeViewWrapper>
+          <NodeViewContent as={Tag as any} />
+        </NodeViewWrapper>
+      );
+    });
+  },
+});
 
 interface NotepadContainerProps {
   noteId?: string | null;
@@ -113,42 +194,54 @@ function EditorToolbar({
       icon: Bold,
       label: "Bold",
       shortcut: "Ctrl+B",
-      action: () => editor.chain().focus().toggleBold().run(),
+      action: () => {
+        (editor.chain().focus() as any).toggleBold().run();
+      },
       isActive: editor.isActive("bold"),
     },
     {
       icon: Italic,
       label: "Italic",
       shortcut: "Ctrl+I",
-      action: () => editor.chain().focus().toggleItalic().run(),
+      action: () => {
+        (editor.chain().focus() as any).toggleItalic().run();
+      },
       isActive: editor.isActive("italic"),
     },
     {
       icon: Heading2,
       label: "Heading",
       shortcut: "Ctrl+Alt+2",
-      action: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      action: () => {
+        (editor.chain().focus() as any).toggleHeading({ level: 2 }).run();
+      },
       isActive: editor.isActive("heading", { level: 2 }),
     },
     {
       icon: List,
       label: "Bullet List",
       shortcut: "Ctrl+Shift+8",
-      action: () => editor.chain().focus().toggleBulletList().run(),
+      action: () => {
+        (editor.chain().focus() as any).toggleBulletList().run();
+      },
       isActive: editor.isActive("bulletList"),
     },
     {
       icon: ListOrdered,
       label: "Numbered List",
       shortcut: "Ctrl+Shift+7",
-      action: () => editor.chain().focus().toggleOrderedList().run(),
+      action: () => {
+        (editor.chain().focus() as any).toggleOrderedList().run();
+      },
       isActive: editor.isActive("orderedList"),
     },
     {
       icon: Quote,
       label: "Quote",
       shortcut: "Ctrl+Shift+B",
-      action: () => editor.chain().focus().toggleBlockquote().run(),
+      action: () => {
+        (editor.chain().focus() as any).toggleBlockquote().run();
+      },
       isActive: editor.isActive("blockquote"),
     },
   ];
@@ -200,25 +293,89 @@ export function NotepadContainer({
   const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
   const [selectedText, setSelectedText] = React.useState("");
 
+  // ─── Date History Logic ─────────────────────────────────────────────────
+  // Initialize content with date headers (wraps legacy/new content)
+  const effectiveCreatedAt = createdAt ?? new Date();
+  const initializedContent = React.useMemo(
+    () => initializeContent(content, effectiveCreatedAt),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [], // Only on mount (key={noteId} causes remount on switch)
+  );
+
+  // Notify parent of initialized content if it changed (e.g. legacy wrap)
+  React.useEffect(() => {
+    if (initializedContent !== content) {
+      onContentChange(initializedContent);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
+
+  // Track the previous content for cross-section edit detection
+  const prevContentRef = React.useRef(initializedContent);
+  // Guard: skip processing when we programmatically set editor content
+  const skipNextProcessRef = React.useRef(false);
+
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        heading: false, // Disable default heading
+      }),
+      ReadonlyDateHeading,
       Markdown.configure({
         html: false,
         transformPastedText: true,
         transformCopiedText: true,
       }),
-    ],
-    content,
+    ] as any,
+    content: initializedContent,
     editorProps: {
       attributes: {
         class: "notepad-editor",
       },
     },
+    onCreate: ({ editor: e }) => {
+      const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
+      const rawMd = storage.markdown!.getMarkdown();
+      // Set the initial baseline to Tiptap's normalized markdown
+      // so we don't trigger a fake edit if it reformats list items, etc.
+      prevContentRef.current = rawMd;
+    },
     onUpdate: ({ editor: e }) => {
       const storage = e.storage as unknown as Record<string, { getMarkdown: () => string }>;
-      const md = storage.markdown!.getMarkdown();
-      onContentChange(md);
+      const rawMd = storage.markdown!.getMarkdown();
+
+      // Skip processing if this update was triggered by our own setContent
+      if (skipNextProcessRef.current) {
+        skipNextProcessRef.current = false;
+        prevContentRef.current = rawMd;
+        onContentChange(rawMd);
+        return;
+      }
+
+      // Process through date-history logic
+      const processed = processContentChange(
+        initializedContent,
+        prevContentRef.current,
+        rawMd,
+        effectiveCreatedAt,
+      );
+
+      // If processing changed the content, update editor
+      if (processed !== rawMd) {
+        skipNextProcessRef.current = true;
+        // Save cursor position
+        const { from, to } = e.state.selection;
+        e.commands.setContent(processed);
+        // Restore cursor (clamp to valid range)
+        const maxPos = e.state.doc.content.size;
+        e.commands.setTextSelection({
+          from: Math.min(from, maxPos),
+          to: Math.min(to, maxPos),
+        });
+      }
+
+      prevContentRef.current = processed;
+      onContentChange(processed);
     },
   });
 
