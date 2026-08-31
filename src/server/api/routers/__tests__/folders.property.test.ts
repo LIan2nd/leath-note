@@ -145,9 +145,10 @@ describe("Property 1: Folder creation invariants", () => {
     await fc.assert(
       fc.asyncProperty(arbUserId, arbFolderName, async (userId, folderName) => {
         const now = new Date();
+        const trimmedName = folderName.trim();
         const expectedFolder = {
           id: `folder-${userId.slice(0, 8)}`,
-          name: folderName,
+          name: trimmedName,
           createdAt: now,
           updatedAt: now,
           userId,
@@ -160,11 +161,11 @@ describe("Property 1: Folder creation invariants", () => {
         const caller = createAuthenticatedCaller(userId);
         const result = await caller.folders.create({ name: folderName });
 
-        // Verify create was called with the provided name
+        // Verify create was called with the normalized name
         expect(mockCreate).toHaveBeenCalledWith(
           expect.objectContaining({
             data: expect.objectContaining({
-              name: folderName,
+              name: trimmedName,
               userId,
             }),
           }),

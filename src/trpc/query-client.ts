@@ -27,19 +27,23 @@ function isUnauthorizedError(error: unknown): boolean {
 /**
  * Handle session expiry globally: when any query/mutation returns UNAUTHORIZED,
  * trigger a session check which will cause useSession() to return "unauthenticated",
- * and the MainLayout will gracefully transition to guest state.
+ * then the authenticated session boundary refreshes the server-rendered route.
  */
 function handleGlobalError(error: unknown) {
   if (typeof window === "undefined") return;
   if (isUnauthorizedError(error)) {
     // Trigger NextAuth session refresh — this updates the useSession() hook
     // across the app, causing the UI to transition to guest state
-    void fetch("/api/auth/session").then(() => {
-      // Force a re-render of session state by dispatching a storage event
-      // (NextAuth's SessionProvider listens for this)
-      const event = new Event("visibilitychange");
-      document.dispatchEvent(event);
-    });
+    void fetch("/api/auth/session")
+      .then(() => {
+        // Force a re-render of session state by dispatching a storage event
+        // (NextAuth's SessionProvider listens for this)
+        const event = new Event("visibilitychange");
+        document.dispatchEvent(event);
+      })
+      .catch((sessionRefreshError: unknown) => {
+        console.error("Could not refresh the expired session", sessionRefreshError);
+      });
   }
 }
 

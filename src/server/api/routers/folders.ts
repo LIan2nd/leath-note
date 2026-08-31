@@ -5,6 +5,11 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 const MAX_FOLDERS_PER_USER = 50;
 const MAX_FOLDER_NAME_LENGTH = 50;
+const folderNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Folder name cannot be empty")
+  .max(MAX_FOLDER_NAME_LENGTH);
 
 export const foldersRouter = createTRPCRouter({
   /** List all folders for the authenticated user, sorted alphabetically */
@@ -22,11 +27,7 @@ export const foldersRouter = createTRPCRouter({
   create: protectedProcedure
     .input(
       z.object({
-        name: z
-          .string()
-          .max(MAX_FOLDER_NAME_LENGTH)
-          .optional()
-          .default("Untitled Folder"),
+        name: folderNameSchema.optional().default("Untitled Folder"),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -56,19 +57,11 @@ export const foldersRouter = createTRPCRouter({
   rename: protectedProcedure
     .input(
       z.object({
-        id: z.string(),
-        name: z.string().min(1).max(MAX_FOLDER_NAME_LENGTH),
+        id: z.string().min(1).max(191),
+        name: folderNameSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const trimmedName = input.name.trim();
-      if (trimmedName.length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Folder name cannot be empty",
-        });
-      }
-
       const folder = await ctx.db.folder.findFirst({
         where: { id: input.id, userId: ctx.session.user.id },
       });
@@ -91,14 +84,14 @@ export const foldersRouter = createTRPCRouter({
 
       return ctx.db.folder.update({
         where: { id: input.id },
-        data: { name: trimmedName },
+        data: { name: input.name },
         include: { _count: { select: { notes: true } } },
       });
     }),
 
   /** Delete a folder, moving all notes to root level */
   delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string().min(1).max(191) }))
     .mutation(async ({ ctx, input }) => {
       const folder = await ctx.db.folder.findFirst({
         where: { id: input.id, userId: ctx.session.user.id },
@@ -123,7 +116,7 @@ export const foldersRouter = createTRPCRouter({
       // Atomic: move notes to root, then delete folder
       await ctx.db.$transaction([
         ctx.db.note.updateMany({
-          where: { folderId: input.id },
+          where: { folderId: input.id, userId: ctx.session.user.id },
           data: { folderId: null },
         }),
         ctx.db.folder.delete({ where: { id: input.id } }),

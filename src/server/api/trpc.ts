@@ -84,7 +84,9 @@ export const createTRPCRouter = t.router;
 const timingMiddleware = t.middleware(async ({ next, path }) => {
   const start = Date.now();
   const result = await next();
-  console.log(`[TRPC] ${path} took ${Date.now() - start}ms to execute`);
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[TRPC] ${path} took ${Date.now() - start}ms to execute`);
+  }
   return result;
 });
 

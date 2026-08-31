@@ -6,6 +6,9 @@ import {
   protectedProcedure,
 } from "~/server/api/trpc";
 
+const MAX_TITLE_LENGTH = 500;
+const MAX_CONTENT_LENGTH = 1_000_000;
+
 export const notesRouter = createTRPCRouter({
   // Get all notes owned by the authenticated user (sorted by most recently updated)
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -27,12 +30,26 @@ export const notesRouter = createTRPCRouter({
   create: protectedProcedure
     .input(
       z.object({
-        title: z.string().optional().default("Untitled"),
-        content: z.string().optional().default(""),
-        folderId: z.string().nullish(),
+        title: z.string().max(MAX_TITLE_LENGTH).optional().default("Untitled"),
+        content: z.string().max(MAX_CONTENT_LENGTH).optional().default(""),
+        folderId: z.string().min(1).max(191).nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (input.folderId) {
+        const ownedFolder = await ctx.db.folder.findFirst({
+          where: { id: input.folderId, userId: ctx.session.user.id },
+          select: { id: true },
+        });
+
+        if (!ownedFolder) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Cannot create a note in a folder you do not own",
+          });
+        }
+      }
+
       return ctx.db.note.create({
         data: {
           title: input.title,
@@ -47,9 +64,9 @@ export const notesRouter = createTRPCRouter({
   update: protectedProcedure
     .input(
       z.object({
-        id: z.string(),
-        title: z.string().optional(),
-        content: z.string().optional(),
+        id: z.string().min(1).max(191),
+        title: z.string().max(MAX_TITLE_LENGTH).optional(),
+        content: z.string().max(MAX_CONTENT_LENGTH).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -87,7 +104,7 @@ export const notesRouter = createTRPCRouter({
 
   // Delete a note with ownership check
   delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string().min(1).max(191) }))
     .mutation(async ({ ctx, input }) => {
       // Check if the note belongs to the authenticated user
       const note = await ctx.db.note.findFirst({
@@ -122,8 +139,8 @@ export const notesRouter = createTRPCRouter({
   moveToFolder: protectedProcedure
     .input(
       z.object({
-        noteId: z.string(),
-        folderId: z.string().nullable(),
+        noteId: z.string().min(1).max(191),
+        folderId: z.string().min(1).max(191).nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {
