@@ -1,81 +1,99 @@
 import "~/styles/globals.css";
 
 import { type Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Courier_Prime } from "next/font/google";
 
 import { Providers } from "~/components/providers";
 import { PWARegistration } from "~/components/pwa-registration";
-
-const APP_NAME = "Leath Notes";
-const APP_DESCRIPTION =
-  "A personal notepad with a skeuomorphic leather-bound design. Write, organize, and let AI assist your thoughts.";
-const APP_URL = "https://leath-note.vercel.app";
+import { env } from "~/env";
+import { siteConfig } from "~/lib/site-config";
+import { auth } from "~/server/auth";
 
 export const metadata: Metadata = {
   title: {
-    default: `${APP_NAME} — Your Personal Notepad`,
-    template: `%s | ${APP_NAME}`,
+    default: siteConfig.title,
+    template: `%s | ${siteConfig.name}`,
   },
-  description: APP_DESCRIPTION,
-  applicationName: APP_NAME,
-  authors: [{ name: "Alfian Nur Usyaid" }],
-  keywords: [
-    "notepad",
-    "notes",
-    "writing",
-    "markdown",
-    "skeuomorphic",
-    "personal",
-    "AI assistant",
+  description: siteConfig.description,
+  applicationName: siteConfig.name,
+  authors: [
+    { name: siteConfig.creator.name, url: siteConfig.creator.url },
   ],
+  creator: `${siteConfig.creator.name} (${siteConfig.creator.alternateName})`,
+  publisher: siteConfig.creator.name,
+  category: "productivity",
+  alternates: {
+    canonical: "/",
+  },
   manifest: "/manifest.json",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  verification: {
+    google:
+      env.GOOGLE_SITE_VERIFICATION ?? siteConfig.googleSiteVerification,
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: APP_NAME,
+    title: siteConfig.name,
   },
   icons: {
-    icon: "/leath-note-logo.png",
-    shortcut: "/leath-note-logo.png",
-    apple: "/leath-note-logo.png",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: siteConfig.pwaIconPath,
   },
   openGraph: {
     type: "website",
-    siteName: APP_NAME,
-    title: `${APP_NAME} — Your Personal Notepad`,
-    description: APP_DESCRIPTION,
-    url: APP_URL,
+    siteName: siteConfig.name,
+    title: siteConfig.title,
+    description: siteConfig.description,
+    url: siteConfig.url,
     images: [
       {
-        url: "/leath-note-logo.png",
-        width: 512,
-        height: 512,
+        url: siteConfig.logoPath,
+        width: 1024,
+        height: 1024,
         alt: "Leath Notes Logo",
       },
     ],
-    locale: "en_US",
+    locale: siteConfig.locale,
   },
   twitter: {
     card: "summary",
-    title: `${APP_NAME} — Your Personal Notepad`,
-    description: APP_DESCRIPTION,
-    images: ["/leath-note-logo.png"],
+    title: siteConfig.title,
+    description: siteConfig.description,
+    images: [siteConfig.logoPath],
   },
-  metadataBase: new URL(APP_URL),
+  metadataBase: new URL(siteConfig.url),
 };
 
-const geist = Geist({
+const courierPrime = Courier_Prime({
   subsets: ["latin"],
-  variable: "--font-geist-sans",
+  weight: ["400", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-courier-prime",
+  display: "swap",
+  preload: false,
 });
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const session = await auth();
+
   return (
-    <html lang="en" className={`${geist.variable}`}>
+    <html lang={siteConfig.language} className={courierPrime.variable}>
       <body className="overflow-x-hidden" suppressHydrationWarning>
-        <Providers>
+        <Providers session={session}>
           <PWARegistration />
           {children}
         </Providers>
