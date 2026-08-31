@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { NotesSidebar } from "../notes-sidebar";
 
@@ -120,6 +120,19 @@ const defaultProps = {
 describe("NotesSidebar drag-and-drop interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
     mockUseDraggable.mockReturnValue({
       attributes: { "data-draggable": "true" },
       listeners: {},
@@ -334,6 +347,33 @@ describe("NotesSidebar drag-and-drop interactions", () => {
       // The dragged item should have opacity-40 class
       const draggableElements = container.querySelectorAll(".opacity-40");
       expect(draggableElements.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("Mobile navigation feedback", () => {
+    it("announces whether the notes menu will open or close", () => {
+      const { rerender } = render(<NotesSidebar {...defaultProps} isOpen={false} />);
+
+      expect(screen.getByRole("button", { name: "Open notes menu" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+
+      rerender(<NotesSidebar {...defaultProps} isOpen />);
+
+      expect(screen.getByRole("button", { name: "Close notes menu" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+
+    it("calls the toggle handler from the mobile menu button", () => {
+      const onToggle = vi.fn();
+      render(<NotesSidebar {...defaultProps} isOpen={false} onToggle={onToggle} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Open notes menu" }));
+
+      expect(onToggle).toHaveBeenCalledOnce();
     });
   });
 });

@@ -70,12 +70,14 @@ export function FolderItem({
   renderNoteItem,
 }: FolderItemProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const submittedRef = React.useRef(false);
   const [editValue, setEditValue] = React.useState(folder.name);
   const [flyoutOpen, setFlyoutOpen] = React.useState(false);
 
   // When entering edit mode, sync the input value and select all text
   React.useEffect(() => {
     if (isEditing) {
+      submittedRef.current = false;
       setEditValue(folder.name);
       // Use a microtask to ensure the input is rendered before focusing
       requestAnimationFrame(() => {
@@ -88,6 +90,8 @@ export function FolderItem({
   }, [isEditing, folder.name]);
 
   const handleSubmit = () => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     const trimmed = editValue.trim();
     if (trimmed.length === 0) {
       // Revert to previous name on empty/whitespace submission
@@ -146,7 +150,7 @@ export function FolderItem({
                 <Folder className="h-4 w-4 opacity-70 shrink-0" />
                 <span className="truncate font-medium text-sm">{folder.name}</span>
                 <span className="ml-auto text-[10px] opacity-60 bg-white/10 rounded-full px-1.5 py-0.5 min-w-[20px] text-center shrink-0">
-                  {folder._count.notes}
+                  {notes.length}
                 </span>
               </div>
 
@@ -251,7 +255,7 @@ export function FolderItem({
               {/* Note count badge */}
               {!isEditing && (
                 <span className="shrink-0 text-[10px] opacity-60 bg-white/10 rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
-                  {folder._count.notes}
+                  {notes.length}
                 </span>
               )}
 

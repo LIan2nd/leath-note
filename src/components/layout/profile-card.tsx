@@ -2,28 +2,31 @@
 
 import * as React from "react";
 import { useSession } from "next-auth/react";
-import { X, User, Mail, Calendar, FileText } from "lucide-react";
-import { cn } from "~/lib/utils";
+import { X, User, Mail, FileText } from "lucide-react";
 import { api } from "~/trpc/react";
+import { useModalFocus } from "~/hooks/use-modal-focus";
+import { ActionErrorMessage } from "~/components/ui/action-error-message";
+import { AsyncStatusMessage } from "~/components/ui/async-status-message";
+
+const PROFILE_LOADING_MESSAGES = [
+  "Counting the notes on your shelf...",
+  "Your note count is taking a little longer to arrive. The rest of your profile is ready.",
+] as const;
 
 interface ProfileCardProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-function formatJoinDate(date: string | Date | undefined | null): string {
-  if (!date) return "Unknown";
-  const d = new Date(date);
-  return d.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 export function ProfileCard({ isOpen, onClose }: ProfileCardProps) {
   const { data: session } = useSession();
-  const { data: notes } = api.notes.list.useQuery(undefined, { enabled: isOpen });
+  const {
+    data: notes,
+    isLoading: isLoadingNotes,
+    isError: hasNotesError,
+    refetch: refetchNotes,
+  } = api.notes.list.useQuery(undefined, { enabled: isOpen });
+  const dialogRef = useModalFocus(isOpen);
 
   // Close on Escape key
   React.useEffect(() => {
@@ -50,16 +53,23 @@ export function ProfileCard({ isOpen, onClose }: ProfileCardProps) {
     .slice(0, 2);
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center overflow-y-auto p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Card */}
-      <div className="settings-modal relative w-full max-w-sm">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-title"
+        aria-busy={isLoadingNotes}
+        className="settings-modal relative w-full max-w-sm"
+      >
         {/* Header */}
         <div className="settings-modal-header px-5 py-4">
           <div className="flex items-center justify-between">
-            <h3 className="embossed-text text-sm font-bold uppercase tracking-wider">
+            <h3 id="profile-title" className="embossed-text text-sm font-bold uppercase tracking-wider">
               Profile
             </h3>
             <button
@@ -115,7 +125,11 @@ export function ProfileCard({ isOpen, onClose }: ProfileCardProps) {
                 Total Notes
               </p>
               <p className="text-sm font-medium" style={{ color: "#e8dcc8", fontFamily: "'Courier Prime', monospace" }}>
-                {noteCount} {noteCount === 1 ? "note" : "notes"}
+                {isLoadingNotes
+                  ? "Counting..."
+                  : hasNotesError
+                    ? "Count unavailable"
+                    : `${noteCount} ${noteCount === 1 ? "note" : "notes"}`}
               </p>
             </div>
           </div>
@@ -133,6 +147,29 @@ export function ProfileCard({ isOpen, onClose }: ProfileCardProps) {
             </div>
           </div>
         </div>
+
+        <AsyncStatusMessage
+          active={isLoadingNotes}
+          messages={PROFILE_LOADING_MESSAGES}
+          className="mx-5 mb-5"
+        />
+
+        {hasNotesError && (
+          <ActionErrorMessage
+            title="The note count is unavailable"
+            message="The server did not return your notes. Your profile is still safe; check your connection and try again."
+            className="mx-5 mb-5 text-xs"
+            action={(
+              <button
+                type="button"
+                onClick={() => void refetchNotes()}
+                className="btn-skeuomorphic px-3 py-1.5 text-xs"
+              >
+                Try again
+              </button>
+            )}
+          />
+        )}
       </div>
     </div>
   );

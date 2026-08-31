@@ -1,7 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { ChevronDown, Clock3 } from "lucide-react";
 import { cn } from "~/lib/utils";
+
+const MAX_TITLE_LENGTH = 500;
+const MAX_CONTENT_LENGTH = 1_000_000;
 
 /** Title editor — textarea that wraps, collapses to 3 lines when blurred */
 function GuestTitleEditor({
@@ -52,6 +56,8 @@ function GuestTitleEditor({
         }}
         value={value}
         rows={1}
+        maxLength={MAX_TITLE_LENGTH}
+        aria-label="Scratchpad title"
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -67,9 +73,10 @@ function GuestTitleEditor({
             setFocused(true);
             ref.current?.focus();
           }}
-          className="typewriter-text mt-1 text-xs text-[#8a8070] opacity-60 hover:opacity-100 transition-opacity cursor-pointer pl-[75px]"
+          className="typewriter-text mt-1 flex items-center gap-1 pl-[75px] text-xs text-[#6f675a] opacity-80 transition-opacity hover:opacity-100"
         >
-          ▼ Show full title
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+          Show full title
         </button>
       )}
     </div>
@@ -96,7 +103,7 @@ export function GuestNotepad({ className }: GuestNotepadProps) {
   return (
     <div
       className={cn(
-        "paper-container relative mx-auto min-h-[800px] w-full max-w-2xl overflow-hidden",
+        "paper-container relative mx-auto min-h-[620px] w-full max-w-2xl overflow-hidden sm:min-h-[720px] lg:min-h-[800px]",
         className
       )}
       style={{ backgroundColor: "var(--paper-bg)" }}
@@ -109,6 +116,16 @@ export function GuestNotepad({ className }: GuestNotepadProps) {
         className="relative pt-5 pb-4"
         style={{ backgroundColor: "var(--paper-bg)" }}
       >
+        <div className="mb-1 flex justify-end px-3 sm:px-5">
+          <div
+            className="guest-draft-status flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
+            id="guest-draft-disclosure"
+            aria-label="Temporary guest page. Writing clears on refresh."
+          >
+            <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Guest page · clears on refresh</span>
+          </div>
+        </div>
         {/* Title textarea — wraps, max 3 lines collapsed */}
         <GuestTitleEditor value={title} onChange={setTitle} />
       </div>
@@ -117,14 +134,17 @@ export function GuestNotepad({ className }: GuestNotepadProps) {
       <div className="h-[2px] w-full bg-[#9fcae3] mb-4" />
 
       {/* Notepad content area with lined paper */}
-      <div className="notepad-body relative min-h-[650px]">
+      <div className="notepad-body relative min-h-[480px] sm:min-h-[570px] lg:min-h-[650px]">
         {/* Writing area */}
         <textarea
           ref={textareaRef}
           placeholder="Start typing your note..."
-          className="notepad-textarea h-full min-h-[650px] w-full"
+          className="notepad-textarea h-full min-h-[480px] w-full sm:min-h-[570px] lg:min-h-[650px]"
           value={content}
+          maxLength={MAX_CONTENT_LENGTH}
           onChange={(e) => setContent(e.target.value)}
+          aria-label="Scratchpad content"
+          aria-describedby="guest-draft-disclosure"
         />
       </div>
     </div>

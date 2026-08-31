@@ -20,7 +20,12 @@ vi.mock("next-auth/react", () => ({
  */
 vi.mock("next/navigation", () => ({
   useSearchParams: vi.fn(() => new URLSearchParams()),
-  useRouter: vi.fn(() => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() })),
+  useRouter: vi.fn(() => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    refresh: vi.fn(),
+    back: vi.fn(),
+  })),
   usePathname: vi.fn(() => "/"),
 }));
 
@@ -87,6 +92,15 @@ describe("Property 9: Guest mode does not persist data", () => {
       ),
       { numRuns: 20 },
     );
+  });
+
+  it("clearly identifies the guest scratchpad as temporary", async () => {
+    const { GuestNotepad } = await import("~/components/layout/guest-notepad");
+    const { getByLabelText } = render(React.createElement(GuestNotepad));
+
+    expect(
+      getByLabelText("Temporary guest page. Writing clears on refresh."),
+    ).toBeTruthy();
   });
 
   it("no fetch calls are made when typing title in the guest notepad", async () => {
@@ -224,4 +238,24 @@ describe("Property 10: Failed login preserves email input", () => {
       { numRuns: 20 },
     );
   }, 60000);
+
+  it("places validation feedback beside the relevant field and moves focus there", async () => {
+    const { LoginForm } = await import("~/components/auth/login-form");
+    const { container, getByText } = render(React.createElement(LoginForm));
+    const emailInput = container.querySelector("#login-email") as HTMLInputElement;
+    const passwordInput = container.querySelector("#login-password") as HTMLInputElement;
+    const form = container.querySelector("form") as HTMLFormElement;
+
+    fireEvent.change(emailInput, { target: { value: "not-an-email" } });
+    fireEvent.submit(form);
+
+    expect(getByText("Please enter a valid email address")).toBeTruthy();
+    expect(document.activeElement).toBe(emailInput);
+
+    fireEvent.change(emailInput, { target: { value: "writer@example.com" } });
+    fireEvent.submit(form);
+
+    expect(getByText("Enter your password to continue.")).toBeTruthy();
+    expect(document.activeElement).toBe(passwordInput);
+  });
 });

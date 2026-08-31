@@ -1,17 +1,46 @@
 "use client";
 
 import * as React from "react";
-import { useSession } from "next-auth/react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bot, Trash2 } from "lucide-react";
 import { cn } from "~/lib/utils";
-import { NotesSidebar } from "./notes-sidebar";
-import { NotepadContainer } from "./notepad-container";
-import { AiChatPanel } from "./ai-chat-panel";
-import { GuestNotepad } from "./guest-notepad";
 import { ProfileCard } from "./profile-card";
-import { LoginForm } from "~/components/auth/login-form";
 import { api } from "~/trpc/react";
 import { useKeyboardShortcuts } from "~/hooks/use-keyboard-shortcuts";
+import { useModalFocus } from "~/hooks/use-modal-focus";
+import { ActionErrorMessage } from "~/components/ui/action-error-message";
+import { AsyncStatusMessage } from "~/components/ui/async-status-message";
+
+const NotepadContainer = dynamic(
+  () => import("./notepad-container").then((module) => module.NotepadContainer),
+  { ssr: false },
+);
+
+const NotesSidebar = dynamic(
+  () => import("./notes-sidebar").then((module) => module.NotesSidebar),
+  { ssr: false },
+);
+
+const AiChatPanel = dynamic(
+  () => import("./ai-chat-panel").then((module) => module.AiChatPanel),
+  { ssr: false },
+);
+
+const SESSION_LOADING_MESSAGES = [
+  "Checking your session...",
+  "The sign-in service is taking a little longer to respond. Please keep this page open.",
+] as const;
+
+const SIGN_IN_RETURN_MESSAGES = [
+  "Returning you to the sign-in page...",
+  "This transition is taking a little longer than usual. Your guest scratchpad will be ready shortly.",
+] as const;
+
+const NOTE_SAVE_ERROR =
+  "Your latest changes could not be saved. Press Ctrl+S to retry.";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = React.useState<T>(value);
@@ -22,52 +51,45 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-/** Loading skeleton shown while session status is being determined */
-function LoadingSkeleton() {
-  return (
-    <div className="wood-background min-h-screen flex items-center justify-center">
-      <div className="animate-pulse flex flex-col items-center gap-4">
-        <div className="h-8 w-48 rounded bg-white/10" />
-        <div className="h-[600px] w-full max-w-2xl rounded bg-white/5" />
+export function AuthenticatedLayout() {
+  const router = useRouter();
+  const { status } = useSession();
+
+  React.useEffect(() => {
+    if (status === "unauthenticated") router.refresh();
+  }, [router, status]);
+
+  if (status !== "authenticated") {
+    return (
+      <div className="wood-background flex min-h-screen items-center justify-center px-4">
+        <AsyncStatusMessage
+          active
+          appearanceDelayMs={0}
+          messages={status === "loading" ? SESSION_LOADING_MESSAGES : SIGN_IN_RETURN_MESSAGES}
+          className="w-full max-w-sm"
+        />
       </div>
-    </div>
-  );
+    );
+  }
+
+  return <AuthenticatedWorkspace />;
 }
 
-/** Guest mode layout: notepad on the left, login form on the right */
-function GuestLayout() {
-  return (
-    <div className="wood-background min-h-screen">
-      <main className="min-h-screen p-4 md:p-8">
-        <div className="flex min-h-[calc(100vh-4rem)] flex-col items-start justify-center gap-6 pt-8 lg:flex-row">
-          {/* Guest notepad — main area */}
-          <div className="w-full flex-1 flex justify-center">
-            <GuestNotepad />
-          </div>
-          {/* Login form — right side */}
-          <div className="w-full lg:w-[380px] lg:min-w-[340px] shrink-0">
-            <React.Suspense fallback={null}>
-              <LoginForm />
-            </React.Suspense>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-/** Authenticated mode: full sidebar + notepad + chat (existing behavior) */
-function AuthenticatedLayout() {
+/** Authenticated mode: full sidebar + notepad + chat. */
+function AuthenticatedWorkspace() {
   const { data: session } = useSession();
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [selectedNoteId, setSelectedNoteId] = React.useState<string | null>(null);
   const [chatOpen, setChatOpen] = React.useState(false);
+  const [chatMounted, setChatMounted] = React.useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
+  const deleteDialogRef = useModalFocus(Boolean(deleteConfirmId));
   const [profileOpen, setProfileOpen] = React.useState(false);
 
   const [editTitle, setEditTitle] = React.useState("");
   const [editContent, setEditContent] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
+  const [operationError, setOperationError] = React.useState<string | null>(null);
 
   // Folder state
   const [expandedFolders, setExpandedFolders] = React.useState<Set<string>>(new Set());
@@ -78,16 +100,42 @@ function AuthenticatedLayout() {
   const savedContentRef = React.useRef("");
 
   const utils = api.useUtils();
+  const queryClient = useQueryClient();
+
+  React.useEffect(() => {
+    const desktopQuery = window.matchMedia("(min-width: 768px)");
+    const syncSidebarWithViewport = (isDesktop: boolean) => setSidebarOpen(isDesktop);
+    syncSidebarWithViewport(desktopQuery.matches);
+
+    const handleChange = (event: MediaQueryListEvent) => syncSidebarWithViewport(event.matches);
+    desktopQuery.addEventListener("change", handleChange);
+    return () => desktopQuery.removeEventListener("change", handleChange);
+  }, []);
 
   // Track IDs being deleted to prevent them from reappearing during refetch
   const pendingNoteDeletes = React.useRef(new Set<string>());
   const pendingFolderDeletes = React.useRef(new Set<string>());
 
   // Single query — all note data lives here, no getById needed
-  const { data: rawNotes, isLoading: isLoadingNotes } = api.notes.list.useQuery();
+  const {
+    data: rawNotes,
+    error: notesQueryError,
+    isLoading: isLoadingNotes,
+  } = api.notes.list.useQuery();
 
   // Folder query
-  const { data: rawFolders } = api.folders.list.useQuery();
+  const {
+    data: rawFolders,
+    error: foldersQueryError,
+    isLoading: isLoadingFolders,
+  } = api.folders.list.useQuery();
+  const isLoadingWorkspace = isLoadingNotes || isLoadingFolders;
+
+  React.useEffect(() => {
+    if (notesQueryError || foldersQueryError) {
+      setOperationError("Some of your notes could not be loaded. Please refresh and try again.");
+    }
+  }, [foldersQueryError, notesQueryError]);
 
   // Filter out items that are pending deletion (prevents reappearing on refetch)
   const notes = React.useMemo(
@@ -114,10 +162,13 @@ function AuthenticatedLayout() {
       // Switch to the new note — set content directly since cache hasn't re-rendered yet
       handleSelectNoteWithData(newNote.id, newNote.title, newNote.content);
       void utils.notes.list.invalidate();
+      void utils.folders.list.invalidate();
     },
+    onError: () => setOperationError("Could not create the note. Please try again."),
   });
 
   const updateNoteMutation = api.notes.update.useMutation({
+    scope: { id: "note-updates" },
     onMutate: async ({ id, title, content }) => {
       // Optimistic update — patch the list cache immediately
       await utils.notes.list.cancel();
@@ -131,13 +182,26 @@ function AuthenticatedLayout() {
       );
       return { previous };
     },
-    onError: (_err, _vars, ctx) => {
-      // Roll back on error
-      if (ctx?.previous) utils.notes.list.setData(undefined, ctx.previous);
+    onError: (_err, { id }, ctx) => {
+      // A late failed save must never resurrect a note being deleted.
+      if (!pendingNoteDeletes.current.has(id) && ctx?.previous) {
+        utils.notes.list.setData(undefined, ctx.previous);
+      }
+      if (selectedNoteId === id) {
+        const previousNote = ctx?.previous?.find((note) => note.id === id);
+        if (previousNote) {
+          savedTitleRef.current = previousNote.title;
+          savedContentRef.current = previousNote.content;
+        }
+      }
       setIsSaving(false);
+      setOperationError(NOTE_SAVE_ERROR);
     },
     onSuccess: () => {
       setIsSaving(false);
+      setOperationError((current) =>
+        current === NOTE_SAVE_ERROR ? null : current,
+      );
       // Reorder sidebar (updatedAt changed) without a full refetch
       utils.notes.list.setData(undefined, (old) =>
         old
@@ -177,11 +241,20 @@ function AuthenticatedLayout() {
         }
       }
 
-      return { previous };
+      const deletedNote = previous?.find((note) => note.id === id);
+      return { previous, deletedNote, wasSelected: selectedNoteId === id };
     },
     onError: (_err, { id }, ctx) => {
       pendingNoteDeletes.current.delete(id);
       if (ctx?.previous) utils.notes.list.setData(undefined, ctx.previous);
+      if (ctx?.wasSelected && ctx.deletedNote) {
+        setSelectedNoteId(ctx.deletedNote.id);
+        setEditTitle(ctx.deletedNote.title);
+        setEditContent(ctx.deletedNote.content);
+        savedTitleRef.current = ctx.deletedNote.title;
+        savedContentRef.current = ctx.deletedNote.content;
+      }
+      setOperationError("Could not delete the note. It has been restored.");
     },
     onSuccess: (_data, { id }) => {
       pendingNoteDeletes.current.delete(id);
@@ -190,6 +263,7 @@ function AuthenticatedLayout() {
       // Only invalidate if no more pending deletes — prevents reappearing items
       if (pendingNoteDeletes.current.size === 0) {
         void utils.notes.list.invalidate();
+        void utils.folders.list.invalidate();
       }
     },
   });
@@ -237,6 +311,7 @@ function AuthenticatedLayout() {
       if (context?.previous) {
         utils.folders.list.setData(undefined, context.previous);
       }
+      setOperationError("Could not create the folder. Please try again.");
     },
     onSettled: () => {
       void utils.folders.list.invalidate();
@@ -254,6 +329,7 @@ function AuthenticatedLayout() {
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.previous) utils.folders.list.setData(undefined, ctx.previous);
+      setOperationError("Could not rename the folder. The previous name was restored.");
     },
     onSettled: () => {
       void utils.folders.list.invalidate();
@@ -280,6 +356,7 @@ function AuthenticatedLayout() {
       pendingFolderDeletes.current.delete(id);
       if (ctx?.previousFolders) utils.folders.list.setData(undefined, ctx.previousFolders);
       if (ctx?.previousNotes) utils.notes.list.setData(undefined, ctx.previousNotes);
+      setOperationError("Could not delete the folder. It has been restored.");
     },
     onSuccess: (_data, { id }) => {
       pendingFolderDeletes.current.delete(id);
@@ -295,15 +372,33 @@ function AuthenticatedLayout() {
 
   const moveToFolderMutation = api.notes.moveToFolder.useMutation({
     onMutate: async ({ noteId, folderId }) => {
-      await utils.notes.list.cancel();
+      await Promise.all([utils.notes.list.cancel(), utils.folders.list.cancel()]);
       const previous = utils.notes.list.getData();
+      const previousFolders = utils.folders.list.getData();
+      const previousFolderId = previous?.find((note) => note.id === noteId)?.folderId ?? null;
       utils.notes.list.setData(undefined, (old) =>
         old?.map((n) => (n.id === noteId ? { ...n, folderId } : n))
       );
-      return { previous };
+      utils.folders.list.setData(undefined, (old) =>
+        old?.map((folder) => {
+          if (folder.id === previousFolderId) {
+            return {
+              ...folder,
+              _count: { notes: Math.max(0, folder._count.notes - 1) },
+            };
+          }
+          if (folder.id === folderId) {
+            return { ...folder, _count: { notes: folder._count.notes + 1 } };
+          }
+          return folder;
+        })
+      );
+      return { previous, previousFolders };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.previous) utils.notes.list.setData(undefined, ctx.previous);
+      if (ctx?.previousFolders) utils.folders.list.setData(undefined, ctx.previousFolders);
+      setOperationError("Could not move the note. Its previous location was restored.");
     },
     onSettled: () => {
       void utils.notes.list.invalidate();
@@ -311,16 +406,18 @@ function AuthenticatedLayout() {
     },
   });
 
-  // Auto-select first note on load
+  // Select a valid note on load and recover if the selected note disappears
+  // after a refetch (for example, it was deleted in another browser tab).
   React.useEffect(() => {
-    if (!selectedNoteId && notes && notes.length > 0) {
-      const firstNote = notes[0]!;
-      setEditTitle(firstNote.title);
-      setEditContent(firstNote.content);
-      savedTitleRef.current = firstNote.title;
-      savedContentRef.current = firstNote.content;
-      setSelectedNoteId(firstNote.id);
-    }
+    if (!notes) return;
+    if (selectedNoteId && notes.some((note) => note.id === selectedNoteId)) return;
+
+    const firstNote = notes[0];
+    setSelectedNoteId(firstNote?.id ?? null);
+    setEditTitle(firstNote?.title ?? "");
+    setEditContent(firstNote?.content ?? "");
+    savedTitleRef.current = firstNote?.title ?? "";
+    savedContentRef.current = firstNote?.content ?? "";
   }, [notes, selectedNoteId]);
 
   const debouncedTitle = useDebounce(editTitle, 1000);
@@ -381,6 +478,7 @@ function AuthenticatedLayout() {
       savedContentRef.current = "";
     }
     setSelectedNoteId(id);
+    if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
   /** Switch to a note when we already have its data (e.g. from mutation response) */
@@ -407,6 +505,7 @@ function AuthenticatedLayout() {
     savedTitleRef.current = noteTitle;
     savedContentRef.current = noteContent;
     setSelectedNoteId(id);
+    if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
   const handleNewNote = () => {
@@ -430,12 +529,17 @@ function AuthenticatedLayout() {
     }
   };
 
+  const toggleChat = React.useCallback(() => {
+    setChatMounted(true);
+    setChatOpen((open) => !open);
+  }, []);
+
   // Keyboard shortcuts
   useKeyboardShortcuts(
     React.useMemo(
       () => ({
         toggleSidebar: () => setSidebarOpen((p) => !p),
-        toggleChat: () => setChatOpen((p) => !p),
+        toggleChat,
         newNote: handleNewNote,
         closeModals: () => {
           if (deleteConfirmId) {
@@ -448,7 +552,7 @@ function AuthenticatedLayout() {
           document.querySelector<HTMLTextAreaElement>(".title-input")?.focus();
         },
         focusBody: () => {
-          document.querySelector<HTMLTextAreaElement>(".notepad-textarea")?.focus();
+          document.querySelector<HTMLElement>(".notepad-editor")?.focus();
         },
         prevNote: () => {
           if (!notes || notes.length === 0) return;
@@ -476,7 +580,7 @@ function AuthenticatedLayout() {
           }
         },
       }),
-      [deleteConfirmId, chatOpen, notes, selectedNoteId, editTitle, editContent] // eslint-disable-line react-hooks/exhaustive-deps
+      [deleteConfirmId, chatOpen, notes, selectedNoteId, editTitle, editContent, toggleChat] // eslint-disable-line react-hooks/exhaustive-deps
     )
   );
 
@@ -491,8 +595,14 @@ function AuthenticatedLayout() {
         isCreatingNote={createNoteMutation.isPending}
         onDeleteNote={handleDeleteNote}
         onOpenProfile={() => setProfileOpen(true)}
+        onLogout={async () => {
+          // Prevent one account's cached notes from flashing for the next
+          // account that signs in in the same browser tab.
+          await signOut({ redirect: false });
+          queryClient.clear();
+        }}
         notes={notes ?? []}
-        isLoading={isLoadingNotes}
+        isLoading={isLoadingWorkspace}
         folders={folders ?? []}
         expandedFolders={expandedFolders}
         editingFolderId={editingFolderId}
@@ -525,11 +635,13 @@ function AuthenticatedLayout() {
       />
 
       <main
+        aria-busy={isLoadingWorkspace}
         className={cn(
-          "min-h-screen p-2 pt-14 transition-[margin] duration-500 ease-in-out sm:p-4 md:p-8 md:pt-8",
+          "min-h-screen p-2 pt-20 transition-[margin] duration-150 ease-out sm:p-4 sm:pt-20 md:p-8 md:pt-8",
           sidebarOpen ? "md:ml-72" : "md:ml-16"
         )}
       >
+        <h1 className="sr-only">Leath Notes writing space</h1>
         <div className="flex min-h-[calc(100vh-4rem)] items-start justify-center md:pt-8">
           <NotepadContainer
             key={selectedNoteId ?? "no-note"}
@@ -539,6 +651,13 @@ function AuthenticatedLayout() {
             createdAt={selectedNote?.createdAt ?? null}
             onTitleChange={setEditTitle}
             onContentChange={setEditContent}
+            onCreateNote={handleNewNote}
+            isCreatingNote={createNoteMutation.isPending}
+            isLoading={isLoadingWorkspace}
+            hasUnsavedChanges={
+              Boolean(selectedNoteId) &&
+              (editTitle !== savedTitleRef.current || editContent !== savedContentRef.current)
+            }
             isSaving={isSaving || updateNoteMutation.isPending}
             authorName={session?.user?.name ?? null}
           />
@@ -546,7 +665,7 @@ function AuthenticatedLayout() {
       </main>
 
       <button
-        onClick={() => setChatOpen((p) => !p)}
+        onClick={toggleChat}
         className={cn("chat-toggle-btn", chatOpen && "active")}
         aria-label={chatOpen ? "Close AI chat" : "Open AI chat"}
         title="AI Assistant"
@@ -554,14 +673,14 @@ function AuthenticatedLayout() {
         <Bot className="h-6 w-6" />
       </button>
 
-      <AiChatPanel
-        isOpen={chatOpen}
-        onClose={() => setChatOpen(false)}
-        noteContent={editContent}
-        noteTitle={editTitle}
-        noteId={selectedNoteId}
-        userName={session?.user?.name}
-      />
+      {chatMounted && (
+        <AiChatPanel
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+          noteTitle={editTitle}
+          noteId={selectedNoteId}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       {deleteConfirmId && (
@@ -570,14 +689,20 @@ function AuthenticatedLayout() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setDeleteConfirmId(null)}
           />
-          <div className="settings-modal relative w-full max-w-sm">
+          <div
+            ref={deleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-note-title"
+            className="settings-modal relative w-full max-w-sm"
+          >
             <div className="settings-modal-header px-5 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-900/30 border border-red-700/40">
                   <Trash2 className="h-5 w-5 text-red-400" />
                 </div>
                 <div>
-                  <h3 className="embossed-text text-sm font-bold uppercase tracking-wider">
+                  <h3 id="delete-note-title" className="embossed-text text-sm font-bold uppercase tracking-wider">
                     Delete Note
                   </h3>
                   <p className="mt-0.5 text-[11px] text-[#c8b89a] opacity-60">
@@ -598,13 +723,13 @@ function AuthenticatedLayout() {
             <div className="settings-modal-footer flex items-center justify-end gap-2 px-5 py-4">
               <button
                 onClick={() => setDeleteConfirmId(null)}
+                autoFocus
                 className="btn-skeuomorphic px-4 py-2 text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                autoFocus
                 className="btn-skeuomorphic px-4 py-2 text-sm"
                 style={{ background: "linear-gradient(180deg, #7a2828 0%, #5c1e1e 50%, #3d1414 100%)" }}
               >
@@ -617,20 +742,23 @@ function AuthenticatedLayout() {
 
       {/* Profile Card */}
       <ProfileCard isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+
+      {operationError && (
+        <ActionErrorMessage
+          title="Leath Notes needs your attention"
+          message={operationError}
+          className="fixed bottom-4 left-1/2 z-70 w-[min(92vw,32rem)] -translate-x-1/2 shadow-xl"
+          action={(
+            <button
+              type="button"
+              onClick={() => setOperationError(null)}
+              className="btn-skeuomorphic px-2 py-1 text-xs"
+            >
+              Dismiss
+            </button>
+          )}
+        />
+      )}
     </div>
   );
-}
-
-export function MainLayout() {
-  const { status } = useSession();
-
-  if (status === "loading") {
-    return <LoadingSkeleton />;
-  }
-
-  if (status === "unauthenticated") {
-    return <GuestLayout />;
-  }
-
-  return <AuthenticatedLayout />;
 }
