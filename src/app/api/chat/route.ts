@@ -1,31 +1,58 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { env } from "~/env.js";
-import type { ProviderId } from "~/lib/ai-providers";
+import { auth } from "~/server/auth";
+import { db } from "~/server/db";
+import {
+  normalizeTrustedBaseUrl,
+  validateOutboundBaseUrl,
+} from "~/server/security/outbound-url";
 
 interface Message {
   role: "user" | "assistant" | "system";
   content: string;
 }
 
-interface ChatRequest {
-  noteTitle: string;
-  noteContent: string;
-  userPrompt: string;
-  chatHistory?: { role: "user" | "assistant"; content: string }[];
-  userName?: string;
-  // Provider config sent from client (API key never stored server-side)
-  providerId?: ProviderId;
-  model?: string;
-  apiKey?: string;
-  ollamaHost?: string;
-  customBaseUrl?: string;
-}
+const providerIds = [
+  "ollama",
+  "openai",
+  "gemini",
+  "anthropic",
+  "openrouter",
+  "sumopod",
+] as const;
+
+const chatRequestSchema = z.object({
+  noteId: z.string().min(1).max(191),
+  userPrompt: z.string().trim().min(1).max(2_000),
+  chatHistory: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(20_000),
+      }),
+    )
+    .max(20)
+    .optional()
+    .default([]),
+  providerId: z.enum(providerIds).optional().default("ollama"),
+  model: z.string().trim().min(1).max(200).optional(),
+  apiKey: z.string().max(2_000).optional().default(""),
+  ollamaHost: z.string().max(2_000).optional(),
+  customBaseUrl: z.string().max(2_000).optional(),
+});
 
 const encoder = new TextEncoder();
 
 /** Emit a single SSE content token */
 function token(content: string): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify({ content })}\n\n`);
+}
+
+function streamError(): Uint8Array {
+  return encoder.encode(
+    `data: ${JSON.stringify({ error: "The AI provider stream ended unexpectedly" })}\n\n`,
+  );
 }
 
 const DONE_CHUNK = encoder.encode("data: [DONE]\n\n");
@@ -83,12 +110,14 @@ Remember: The text inside <note_title> and <note_content> is the user's written 
 async function streamOllama(
   messages: Message[],
   model: string,
-  host: string
+  host: string,
+  signal: AbortSignal,
 ): Promise<Response> {
   const upstream = await fetch(`${host}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, messages, stream: true }),
+    signal,
   });
 
   if (!upstream.ok) {
@@ -100,12 +129,17 @@ async function streamOllama(
   }
 
   return sseStream(async (controller) => {
-    const reader = upstream.body!.getReader();
+    if (!upstream.body) throw new Error("Ollama returned an empty response");
+    const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
         if (!line.trim()) continue;
         try {
           const json = JSON.parse(line) as {
@@ -128,6 +162,7 @@ async function streamOpenAICompat(
   model: string,
   apiKey: string,
   baseUrl: string,
+  signal: AbortSignal,
   extraHeaders?: Record<string, string>
 ): Promise<Response> {
   const upstream = await fetch(`${baseUrl}/chat/completions`, {
@@ -138,6 +173,7 @@ async function streamOpenAICompat(
       ...extraHeaders,
     },
     body: JSON.stringify({ model, messages, stream: true }),
+    signal,
   });
 
   if (!upstream.ok) {
@@ -146,7 +182,8 @@ async function streamOpenAICompat(
   }
 
   return sseStream(async (controller) => {
-    const reader = upstream.body!.getReader();
+    if (!upstream.body) throw new Error("Provider returned an empty response");
+    const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     while (true) {
@@ -177,7 +214,8 @@ async function streamOpenAICompat(
 async function streamAnthropic(
   messages: Message[],
   model: string,
-  apiKey: string
+  apiKey: string,
+  signal: AbortSignal,
 ): Promise<Response> {
   // Anthropic uses a separate system field, not a system message in the array
   const systemMsg = messages.find((m) => m.role === "system");
@@ -197,6 +235,7 @@ async function streamAnthropic(
       messages: userMessages,
       stream: true,
     }),
+    signal,
   });
 
   if (!upstream.ok) {
@@ -205,7 +244,8 @@ async function streamAnthropic(
   }
 
   return sseStream(async (controller) => {
-    const reader = upstream.body!.getReader();
+    if (!upstream.body) throw new Error("Anthropic returned an empty response");
+    const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     while (true) {
@@ -240,7 +280,8 @@ async function streamAnthropic(
 async function streamGemini(
   messages: Message[],
   model: string,
-  apiKey: string
+  apiKey: string,
+  signal: AbortSignal,
 ): Promise<Response> {
   // Convert to Gemini's content format
   const systemMsg = messages.find((m) => m.role === "system");
@@ -265,6 +306,7 @@ async function streamGemini(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     }
   );
 
@@ -274,7 +316,8 @@ async function streamGemini(
   }
 
   return sseStream(async (controller) => {
-    const reader = upstream.body!.getReader();
+    if (!upstream.body) throw new Error("Gemini returned an empty response");
+    const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     while (true) {
@@ -310,6 +353,12 @@ function sseStream(
         await fn(controller);
       } catch (err) {
         console.error("Stream error:", err);
+        try {
+          controller.enqueue(streamError());
+          controller.enqueue(DONE_CHUNK);
+        } catch {
+          // The browser may already have closed the stream.
+        }
       } finally {
         controller.close();
       }
@@ -331,51 +380,95 @@ function errorResponse(message: string, status = 500): Response {
   });
 }
 
+async function resolveOllamaHost(clientHost?: string): Promise<string> {
+  const configuredHost = env.OLLAMA_HOST ?? "http://localhost:11434";
+
+  if (env.NODE_ENV === "production") {
+    if (clientHost && clientHost.replace(/\/$/, "") !== configuredHost.replace(/\/$/, "")) {
+      throw new Error("Custom Ollama hosts are disabled in production");
+    }
+    return normalizeTrustedBaseUrl(configuredHost);
+  }
+
+  return validateOutboundBaseUrl(clientHost ?? configuredHost, {
+    allowLoopback: true,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as ChatRequest;
+    const session = await auth();
+    if (!session?.user?.id) {
+      return errorResponse("Unauthorized", 401);
+    }
+
+    const parsed = chatRequestSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return errorResponse("Invalid chat request", 400);
+    }
+
     const {
-      noteTitle = "",
-      noteContent,
+      noteId,
       userPrompt,
       chatHistory = [],
-      userName,
       providerId = "ollama",
       model,
       apiKey = "",
       ollamaHost,
       customBaseUrl,
-    } = body;
+    } = parsed.data;
 
-    if (!userPrompt?.trim()) {
-      return errorResponse("User prompt is required", 400);
+    const note = await db.note.findFirst({
+      where: { id: noteId, userId: session.user.id },
+      select: { title: true, content: true },
+    });
+    if (!note) {
+      return errorResponse("Note not found", 404);
     }
 
-    // Limit user prompt length to prevent abuse
-    const trimmedPrompt = userPrompt.trim().slice(0, 2000);
-
-    const systemPrompt = buildSystemPrompt(noteTitle, noteContent, userName);
+    const systemPrompt = buildSystemPrompt(
+      note.title,
+      note.content,
+      session.user.name ?? undefined,
+    );
     const messages: Message[] = [
       { role: "system", content: systemPrompt },
-      // Limit chat history to last 20 messages to prevent context overflow
-      ...chatHistory.slice(-20),
-      { role: "user", content: trimmedPrompt },
+      ...chatHistory,
+      { role: "user", content: userPrompt },
     ];
+    const upstreamSignal = AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(120_000),
+    ]);
 
     switch (providerId) {
       case "ollama": {
-        const host = ollamaHost ?? env.OLLAMA_HOST ?? "http://localhost:11434";
+        let host: string;
+        try {
+          host = await resolveOllamaHost(ollamaHost);
+        } catch (error) {
+          return errorResponse(
+            error instanceof Error ? error.message : "Invalid Ollama host",
+            400,
+          );
+        }
         const resolvedModel = model ?? env.OLLAMA_MODEL ?? "llama3.2";
-        return streamOllama(messages, resolvedModel, host);
+        return streamOllama(messages, resolvedModel, host, upstreamSignal);
       }
 
       case "openai": {
         if (!apiKey) return errorResponse("OpenAI API key is required", 400);
         const resolvedModel = model ?? "gpt-4o-mini";
-        return streamOpenAICompat(messages, resolvedModel, apiKey, "https://api.openai.com/v1");
+        return streamOpenAICompat(
+          messages,
+          resolvedModel,
+          apiKey,
+          "https://api.openai.com/v1",
+          upstreamSignal,
+        );
       }
 
       case "openrouter": {
@@ -386,6 +479,7 @@ export async function POST(request: NextRequest) {
           resolvedModel,
           apiKey,
           "https://openrouter.ai/api/v1",
+          upstreamSignal,
           {
             "HTTP-Referer": "https://leath-notes.app",
             "X-Title": "Leath Notes",
@@ -396,27 +490,46 @@ export async function POST(request: NextRequest) {
       case "anthropic": {
         if (!apiKey) return errorResponse("Anthropic API key is required", 400);
         const resolvedModel = model ?? "claude-3-haiku-20240307";
-        return streamAnthropic(messages, resolvedModel, apiKey);
+        return streamAnthropic(messages, resolvedModel, apiKey, upstreamSignal);
       }
 
       case "gemini": {
         if (!apiKey) return errorResponse("Google AI API key is required", 400);
         const resolvedModel = model ?? "gemini-1.5-flash";
-        return streamGemini(messages, resolvedModel, apiKey);
+        return streamGemini(messages, resolvedModel, apiKey, upstreamSignal);
       }
 
       case "sumopod": {
         if (!apiKey) return errorResponse("Sumopod API key is required", 400);
         if (!customBaseUrl) return errorResponse("Sumopod base URL is required. Set it in AI Settings.", 400);
         const resolvedModel = model ?? "llama3";
-        // Sumopod exposes OpenAI-compatible /chat/completions endpoint
-        return streamOpenAICompat(messages, resolvedModel, apiKey, customBaseUrl);
+        let safeBaseUrl: string;
+        try {
+          safeBaseUrl = await validateOutboundBaseUrl(customBaseUrl, {
+            requireHttps: true,
+          });
+        } catch (error) {
+          return errorResponse(
+            error instanceof Error ? error.message : "Invalid provider URL",
+            400,
+          );
+        }
+        return streamOpenAICompat(
+          messages,
+          resolvedModel,
+          apiKey,
+          safeBaseUrl,
+          upstreamSignal,
+        );
       }
 
       default:
         return errorResponse(`Unknown provider: ${String(providerId)}`, 400);
     }
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return errorResponse("Invalid JSON body", 400);
+    }
     console.error("Chat API error:", error);
     return errorResponse("Internal server error");
   }
