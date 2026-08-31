@@ -4,15 +4,24 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  const ownerEmail = process.env.SEED_OWNER_EMAIL?.trim().toLowerCase();
+  const ownerPasswordValue = process.env.SEED_OWNER_PASSWORD;
+
+  if (!ownerEmail || !ownerPasswordValue || ownerPasswordValue.length < 12) {
+    throw new Error(
+      "Set SEED_OWNER_EMAIL and a SEED_OWNER_PASSWORD of at least 12 characters before seeding.",
+    );
+  }
+
   // Create owner account
-  const ownerPassword = await bcrypt.hash("owner123321", 12);
+  const ownerPassword = await bcrypt.hash(ownerPasswordValue, 12);
 
   const owner = await prisma.user.upsert({
-    where: { email: "liand@owner.com" },
+    where: { email: ownerEmail },
     update: { password: ownerPassword },
     create: {
-      email: "liand@owner.com",
-      name: "Liand",
+      email: ownerEmail,
+      name: process.env.SEED_OWNER_NAME?.trim() || "Owner",
       password: ownerPassword,
     },
   });

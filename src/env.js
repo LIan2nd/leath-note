@@ -15,6 +15,7 @@ export const env = createEnv({
     AUTH_GOOGLE_SECRET: z.string().optional(),
     DATABASE_URL: z.string().url(),
     DIRECT_URL: z.string().url().optional(),
+    GOOGLE_SITE_VERIFICATION: z.string().trim().min(1).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -42,6 +43,7 @@ export const env = createEnv({
     AUTH_GOOGLE_SECRET: process.env.AUTH_GOOGLE_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     DIRECT_URL: process.env.DIRECT_URL,
+    GOOGLE_SITE_VERIFICATION: process.env.GOOGLE_SITE_VERIFICATION,
     NODE_ENV: process.env.NODE_ENV,
     OLLAMA_HOST: process.env.OLLAMA_HOST,
     OLLAMA_MODEL: process.env.OLLAMA_MODEL,

@@ -144,7 +144,7 @@ describe("Property 3: Folder deletion preserves notes", () => {
 
           // Verify note.updateMany was called to set folderId = null for all notes in the folder
           expect(mockUpdateMany).toHaveBeenCalledWith({
-            where: { folderId: folderId },
+            where: { folderId: folderId, userId },
             data: { folderId: null },
           });
 
@@ -205,7 +205,7 @@ describe("Property 3: Folder deletion preserves notes", () => {
           // Verify that note.updateMany was used (moves notes to root) — NOT note.deleteMany
           expect(mockUpdateMany).toHaveBeenCalledTimes(1);
           expect(mockUpdateMany).toHaveBeenCalledWith({
-            where: { folderId: folderId },
+            where: { folderId: folderId, userId },
             data: { folderId: null },
           });
 

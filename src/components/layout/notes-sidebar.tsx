@@ -12,6 +12,7 @@ import {
   LogOut,
   UserCircle,
   Loader2,
+  X,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import {
@@ -27,9 +28,14 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { cn } from "~/lib/utils";
+import { siteConfig } from "~/lib/site-config";
 import { Button } from "~/components/ui/button";
 import { Separator } from "~/components/ui/separator";
+import { useModalFocus } from "~/hooks/use-modal-focus";
+import { useIsMobile } from "~/hooks/use-mobile";
 import { FolderList } from "./folder-list";
+import { ActionErrorMessage } from "~/components/ui/action-error-message";
+import { AsyncStatusMessage } from "~/components/ui/async-status-message";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -37,6 +43,17 @@ import {
   ContextMenuTrigger,
   ContextMenuSeparator,
 } from "~/components/ui/context-menu";
+
+const NOTES_LOADING_MESSAGES = [
+  "Opening your notes...",
+  "Your shelf is taking a little longer to arrive. Please keep this page open.",
+  "If your shelf still does not appear, refresh the page and try once more.",
+] as const;
+
+const LOGOUT_LOADING_MESSAGES = [
+  "Closing your account session safely...",
+  "Signing out is taking longer than usual. If this stays here, refresh the page to confirm your session.",
+] as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +82,7 @@ interface NotesSidebarProps {
   isCreatingNote?: boolean;
   onDeleteNote: (id: string) => void;
   onOpenProfile: () => void;
+  onLogout?: () => Promise<void>;
   notes: Note[];
   isLoading?: boolean;
   // Folder-related props (optional for backward compatibility)
@@ -166,6 +184,7 @@ export function NotesSidebar({
   isCreatingNote = false,
   onDeleteNote,
   onOpenProfile,
+  onLogout,
   notes,
   isLoading,
   folders = [],
@@ -181,8 +200,11 @@ export function NotesSidebar({
   onNewNoteInFolder,
 }: NotesSidebarProps) {
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [logoutError, setLogoutError] = React.useState<string | null>(null);
   const [activeNote, setActiveNote] = React.useState<Note | null>(null);
   const [deleteFolderConfirmId, setDeleteFolderConfirmId] = React.useState<string | null>(null);
+  const deleteFolderDialogRef = useModalFocus(Boolean(deleteFolderConfirmId));
+  const isMobile = useIsMobile();
 
   // DnD sensor: require 8px of movement before starting a drag.
   // This allows normal clicks (select, delete) to work without being intercepted.
@@ -213,9 +235,26 @@ export function NotesSidebar({
     setDeleteFolderConfirmId(null);
   };
 
+  React.useEffect(() => {
+    if (!deleteFolderConfirmId) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancelDeleteFolder();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [deleteFolderConfirmId]);
+
   const handleLogout = async () => {
+    setLogoutError(null);
     setLoggingOut(true);
-    await signOut();
+    try {
+      if (onLogout) await onLogout();
+      else await signOut();
+    } catch {
+      setLogoutError("The server could not end your session. You are still signed in; check your connection and try again.");
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   // ─── Drag handlers ──────────────────────────────────────────────────────
@@ -239,11 +278,9 @@ export function NotesSidebar({
     const noteId = draggedNote.id;
     const targetId = over.id as string;
 
-    if (targetId === "root-level") {
-      onMoveToFolder?.(noteId, null);
-    } else {
-      onMoveToFolder?.(noteId, targetId);
-    }
+    const targetFolderId = targetId === "root-level" ? null : targetId;
+    if ((draggedNote.folderId ?? null) === targetFolderId) return;
+    onMoveToFolder?.(noteId, targetFolderId);
   };
 
   const handleDragCancel = () => {
@@ -266,16 +303,21 @@ export function NotesSidebar({
       <button
         onClick={onToggle}
         className="btn-skeuomorphic fixed left-4 top-4 z-50 p-2 md:hidden"
-        aria-label="Toggle sidebar"
+        aria-label={isOpen ? "Close notes menu" : "Open notes menu"}
+        aria-expanded={isOpen}
       >
-        <Menu className="h-5 w-5" />
+        {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
       {/* Sidebar */}
       <aside
+        aria-label="Notes navigation"
+        aria-hidden={isMobile && !isOpen}
+        aria-busy={isLoading || loggingOut}
+        inert={isMobile && !isOpen}
         className={cn(
           "leather-background sidebar-leather fixed left-0 top-0 z-40 flex h-full flex-col",
-          "transition-all duration-400 ease-in-out",
+          "transition-all duration-150 ease-out",
           isOpen
             ? "w-72 overflow-hidden shadow-2xl md:shadow-none"
             : "w-0 overflow-hidden md:w-16 md:overflow-visible",
@@ -293,14 +335,14 @@ export function NotesSidebar({
         <div
           className={cn(
             "flex items-center p-4 min-h-[60px]",
-            isOpen ? "justify-between" : "justify-center"
+            isOpen ? "justify-between pl-20 md:pl-4" : "justify-center"
           )}
         >
           {isOpen && (
-            <h1 className="embossed-text text-base tracking-wide whitespace-nowrap flex items-center gap-2">
-              <img src="/leath-note-logo.png" alt="Leath Notes" className="h-6 w-6" />
+            <h2 className="embossed-text text-base tracking-wide whitespace-nowrap flex items-center gap-2">
+              <img src={siteConfig.iconPath} alt="Leath Notes" width={24} height={24} className="h-6 w-6" />
               My Writings
-            </h1>
+            </h2>
           )}
           <button
             onClick={onToggle}
@@ -322,6 +364,7 @@ export function NotesSidebar({
           <Button
             onClick={onNewNote}
             disabled={isCreatingNote}
+            aria-label={!isOpen ? "New note" : undefined}
             className={cn(
               "btn-skeuomorphic gap-2",
               isOpen ? "w-full" : "w-auto p-2"
@@ -334,6 +377,7 @@ export function NotesSidebar({
             <Button
               onClick={onNewFolder}
               disabled={isCreatingFolder}
+              aria-label={!isOpen ? "New folder" : undefined}
               className={cn(
                 "btn-skeuomorphic gap-2",
                 isOpen ? "w-full mt-2" : "w-auto p-2"
@@ -361,9 +405,19 @@ export function NotesSidebar({
           )}>
             <div className="space-y-2 py-2">
               {isLoading ? (
-                <div className="p-4 text-center">
-                  <span className="text-[#c8b89a] opacity-60">Loading...</span>
-                </div>
+                isOpen ? (
+                  <AsyncStatusMessage
+                    active
+                    appearanceDelayMs={0}
+                    messages={NOTES_LOADING_MESSAGES}
+                    className="m-2"
+                  />
+                ) : (
+                  <div role="status" className="flex justify-center p-4 text-[#d8c9ae]">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    <span className="sr-only">Opening your notes...</span>
+                  </div>
+                )
               ) : (
                 <>
                   {/* Folder List */}
@@ -400,7 +454,7 @@ export function NotesSidebar({
                     {rootNotes.length === 0 && folders.length === 0 ? (
                       <div className={cn("p-4 text-center", !isOpen && "hidden")}>
                         <span className="text-[#c8b89a] opacity-60 text-sm">
-                          No notes yet. Click &quot;New Note&quot; to start!
+                          Your shelf is ready. Create a note when you are.
                         </span>
                       </div>
                     ) : (
@@ -493,47 +547,74 @@ export function NotesSidebar({
 
         {/* Footer */}
         <Separator className="bg-white/10" />
-        <div
-          className={cn(
-            "p-3 shrink-0",
-            isOpen
-              ? "flex items-center justify-between"
-              : "flex flex-col items-center gap-2"
-          )}
-        >
-          {isOpen && (
-            <span className="embossed-text text-[10px] italic opacity-40">
-              Where thoughts become words ✍️
-            </span>
-          )}
-          <div className={cn(
-            "flex gap-1",
-            isOpen ? "items-center" : "flex-col items-center"
-          )}>
-            <button
-              onClick={onOpenProfile}
-              className="btn-skeuomorphic p-2"
-              aria-label="Profile"
-              title="Profile"
-            >
-              <UserCircle className="h-4 w-4" />
-            </button>
-            <button
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="btn-skeuomorphic p-2 disabled:opacity-50"
-              aria-label="Logout"
-              title="Logout"
-            >
-              {loggingOut ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <LogOut className="h-4 w-4" />
-              )}
-            </button>
+        <div className="shrink-0 p-3">
+          <div
+            className={cn(
+              isOpen
+                ? "flex items-center justify-between"
+                : "flex flex-col items-center gap-2"
+            )}
+          >
+            {isOpen && (
+              <span className="embossed-text text-[10px] italic opacity-40">
+                A quiet place for your thoughts
+              </span>
+            )}
+            <div className={cn(
+              "flex gap-1",
+              isOpen ? "items-center" : "flex-col items-center"
+            )}>
+              <button
+                onClick={onOpenProfile}
+                disabled={loggingOut}
+                className="btn-skeuomorphic p-2 disabled:opacity-50"
+                aria-label="Profile"
+                title="Profile"
+              >
+                <UserCircle className="h-4 w-4" />
+              </button>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="btn-skeuomorphic p-2 disabled:opacity-50"
+                aria-label={loggingOut ? "Signing out" : "Logout"}
+                title={loggingOut ? "Signing out..." : "Logout"}
+              >
+                {loggingOut ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
+
+          {isOpen && (
+            <AsyncStatusMessage
+              active={loggingOut}
+              messages={LOGOUT_LOADING_MESSAGES}
+              className="mt-2"
+            />
+          )}
         </div>
       </aside>
+
+      {logoutError && (
+        <ActionErrorMessage
+          title="You are still signed in"
+          message={logoutError}
+          className="fixed bottom-4 left-1/2 z-70 w-[min(92vw,32rem)] -translate-x-1/2 shadow-xl"
+          action={(
+            <button
+              type="button"
+              onClick={() => setLogoutError(null)}
+              className="btn-skeuomorphic px-2 py-1 text-xs"
+            >
+              Dismiss
+            </button>
+          )}
+        />
+      )}
 
       {/* Folder Delete Confirmation Dialog */}
       {deleteFolderConfirmId && deletingFolder && (
@@ -542,14 +623,20 @@ export function NotesSidebar({
             className="absolute inset-0 bg-black/50"
             onClick={cancelDeleteFolder}
           />
-          <div className="settings-modal relative w-full max-w-sm">
+          <div
+            ref={deleteFolderDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-folder-title"
+            className="settings-modal relative w-full max-w-sm"
+          >
             <div className="settings-modal-header px-5 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-900/30 border border-red-700/40">
                   <Trash2 className="h-5 w-5 text-red-400" />
                 </div>
                 <div>
-                  <h3 className="embossed-text text-sm font-bold uppercase tracking-wider">
+                  <h3 id="delete-folder-title" className="embossed-text text-sm font-bold uppercase tracking-wider">
                     Delete Folder
                   </h3>
                   <p className="mt-0.5 text-[11px] text-[#c8b89a] opacity-60">
@@ -570,13 +657,13 @@ export function NotesSidebar({
             <div className="settings-modal-footer flex items-center justify-end gap-2 px-5 py-4">
               <button
                 onClick={cancelDeleteFolder}
+                autoFocus
                 className="btn-skeuomorphic px-4 py-2 text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDeleteFolder}
-                autoFocus
                 className="btn-skeuomorphic px-4 py-2 text-sm"
                 style={{ background: "linear-gradient(180deg, #7a2828 0%, #5c1e1e 50%, #3d1414 100%)" }}
               >

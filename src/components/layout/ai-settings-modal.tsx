@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { X, ExternalLink, Eye, EyeOff, Check, RotateCcw } from "lucide-react";
+import { X, ExternalLink, Eye, EyeOff, Check, RotateCcw, Settings } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { useModalFocus } from "~/hooks/use-modal-focus";
 import {
   PROVIDERS,
   getProvider,
@@ -10,6 +11,7 @@ import {
   type AiSettings,
   type ProviderId,
 } from "~/lib/ai-providers";
+import { ActionErrorMessage } from "~/components/ui/action-error-message";
 
 interface AiSettingsModalProps {
   isOpen: boolean;
@@ -24,7 +26,6 @@ function getEnvSource(): Partial<Record<keyof AiSettings, boolean>> {
   return {
     providerId: !!process.env.NEXT_PUBLIC_AI_PROVIDER,
     model: !!process.env.NEXT_PUBLIC_AI_MODEL,
-    apiKey: !!process.env.NEXT_PUBLIC_AI_API_KEY,
     ollamaHost: !!process.env.NEXT_PUBLIC_OLLAMA_HOST,
   };
 }
@@ -47,12 +48,16 @@ export function AiSettingsModal({
   const [draft, setDraft] = React.useState<AiSettings>(settings);
   const [showKey, setShowKey] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const dialogRef = useModalFocus(isOpen);
   const usingEnvDefaults = isUsingEnvDefaults();
   const envSource = getEnvSource();
 
   React.useEffect(() => {
+    if (!isOpen) return;
     setDraft(settings);
-  }, [settings]);
+    setSaveError(null);
+  }, [isOpen, settings]);
 
   // Close on Escape key
   React.useEffect(() => {
@@ -81,33 +86,49 @@ export function AiSettingsModal({
   };
 
   const handleSave = () => {
-    onSave(draft);
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      onClose();
-    }, 800);
+    setSaveError(null);
+    try {
+      onSave(draft);
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        onClose();
+      }, 800);
+    } catch {
+      setSaveError("This browser did not allow Leath Notes to store your AI settings. Check site storage permissions, then try again.");
+    }
   };
 
   const handleReset = () => {
-    onReset();
-    onClose();
+    setSaveError(null);
+    try {
+      onReset();
+      onClose();
+    } catch {
+      setSaveError("This browser did not allow Leath Notes to reset the saved settings. Check site storage permissions, then try again.");
+    }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center overflow-y-auto p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="settings-modal relative w-full max-w-md">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ai-settings-title"
+        className="settings-modal relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col"
+      >
         {/* Header */}
         <div className="settings-modal-header flex items-center justify-between px-5 py-4">
           <div>
-            <h2 className="embossed-text text-base font-bold uppercase tracking-wider">
-              ⚙️ AI Settings
+            <h2 id="ai-settings-title" className="embossed-text flex items-center gap-2 text-base font-bold uppercase tracking-wider">
+              <Settings className="h-4 w-4" aria-hidden="true" /> AI Settings
             </h2>
             <p className="mt-0.5 text-[11px] text-[#c8b89a] opacity-60">
               {usingEnvDefaults
@@ -121,17 +142,26 @@ export function AiSettingsModal({
         </div>
 
         {/* Body */}
-        <div className="settings-modal-body space-y-5 px-5 py-4">
+        <div className="settings-modal-body flex-1 space-y-5 overflow-y-auto px-5 py-4">
+
+          {saveError && (
+            <ActionErrorMessage
+              title="AI settings were not saved"
+              message={saveError}
+              className="text-xs"
+            />
+          )}
 
           {/* Provider selector */}
           <div className="space-y-2">
             <div className="flex items-center gap-1">
-              <label className="settings-label">Provider</label>
+              <span className="settings-label">Provider</span>
               {envSource.providerId && usingEnvDefaults && <EnvBadge />}
             </div>
-            <div className="grid grid-cols-1 gap-1.5">
+            <div className="grid grid-cols-1 gap-1.5" role="group" aria-label="AI provider">
               {PROVIDERS.map((p) => (
                 <button
+                  type="button"
                   key={p.id}
                   onClick={() => handleProviderChange(p.id)}
                   className={cn(
@@ -155,10 +185,11 @@ export function AiSettingsModal({
           {provider && (
           <div className="space-y-2">
             <div className="flex items-center gap-1">
-              <label className="settings-label">Model</label>
+              <label htmlFor="ai-model" className="settings-label">Model</label>
               {envSource.model && usingEnvDefaults && <EnvBadge />}
             </div>
             <select
+              id="ai-model"
               value={draft.model}
               onChange={(e) => setDraft((prev) => ({ ...prev, model: e.target.value }))}
               className="settings-select w-full"
@@ -171,6 +202,7 @@ export function AiSettingsModal({
             </select>
             <input
               type="text"
+              aria-label="Custom model name"
               value={draft.model}
               onChange={(e) => setDraft((prev) => ({ ...prev, model: e.target.value }))}
               placeholder={`Or type custom: ${provider.modelPlaceholder}`}
@@ -183,10 +215,11 @@ export function AiSettingsModal({
           {draft.providerId === "ollama" && (
             <div className="space-y-2">
               <div className="flex items-center gap-1">
-                <label className="settings-label">Ollama Host URL</label>
+                <label htmlFor="ai-ollama-host" className="settings-label">Ollama Host URL</label>
                 {envSource.ollamaHost && usingEnvDefaults && <EnvBadge />}
               </div>
               <input
+                id="ai-ollama-host"
                 type="url"
                 value={draft.ollamaHost}
                 onChange={(e) => setDraft((prev) => ({ ...prev, ollamaHost: e.target.value }))}
@@ -202,8 +235,9 @@ export function AiSettingsModal({
           {/* Custom Base URL (for Sumopod or other OpenAI-compatible endpoints) */}
           {provider?.requiresBaseUrl && (
             <div className="space-y-2">
-              <label className="settings-label">API Base URL</label>
+              <label htmlFor="ai-base-url" className="settings-label">API Base URL</label>
               <input
+                id="ai-base-url"
                 type="url"
                 value={draft.customBaseUrl}
                 onChange={(e) => setDraft((prev) => ({ ...prev, customBaseUrl: e.target.value }))}
@@ -221,42 +255,38 @@ export function AiSettingsModal({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
-                  <label className="settings-label">{provider.apiKeyLabel}</label>
-                  {envSource.apiKey && usingEnvDefaults && <EnvBadge />}
+                  <label htmlFor="ai-api-key" className="settings-label">{provider.apiKeyLabel}</label>
                 </div>
                 <a
                   href={provider.docsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[11px] text-[#c8b89a] opacity-60 hover:opacity-100 transition-opacity"
+                  className="flex min-h-11 items-center gap-1 text-[11px] text-[#c8b89a] opacity-70 transition-opacity hover:opacity-100"
                 >
                   Get key <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
               <div className="relative">
                 <input
+                  id="ai-api-key"
                   type={showKey ? "text" : "password"}
                   value={draft.apiKey}
                   onChange={(e) => setDraft((prev) => ({ ...prev, apiKey: e.target.value }))}
-                  placeholder={
-                    envSource.apiKey && usingEnvDefaults
-                      ? "••••••••  (set via .env)"
-                      : provider.apiKeyPlaceholder
-                  }
-                  className="settings-input w-full pr-10"
+                  placeholder={provider.apiKeyPlaceholder}
+                  className="settings-input w-full pr-12"
                   autoComplete="off"
                 />
                 <button
                   type="button"
                   onClick={() => setShowKey((v) => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#c8b89a] opacity-50 hover:opacity-100 transition-opacity"
+                  className="absolute right-0 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center text-[#c8b89a] opacity-60 transition-opacity hover:opacity-100"
                   aria-label={showKey ? "Hide key" : "Show key"}
                 >
                   {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
               <p className="text-[11px] text-[#c8b89a] opacity-50">
-                Stored in your browser&apos;s localStorage — never sent to our servers.
+                Stored in this browser and sent only with AI requests; it is not saved in the database.
               </p>
             </div>
           )}
@@ -268,7 +298,7 @@ export function AiSettingsModal({
           {!usingEnvDefaults ? (
             <button
               onClick={handleReset}
-              className="flex items-center gap-1.5 text-[11px] text-[#c8b89a] opacity-50 hover:opacity-80 transition-opacity"
+              className="flex min-h-11 items-center gap-1.5 text-[11px] text-[#c8b89a] opacity-60 transition-opacity hover:opacity-90"
               title="Clear saved settings and revert to .env defaults"
             >
               <RotateCcw className="h-3 w-3" />

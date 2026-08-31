@@ -60,6 +60,8 @@ check-db.ts
 # agent
 GEMINI.md
 MOBILE_APP_PROMPT.md
+.agents
+.kiro
 
 # LazyDocker
 LazyDocker-temp/

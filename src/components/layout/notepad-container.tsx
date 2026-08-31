@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { cn } from "~/lib/utils";
-import { Loader2, Bold, Italic, Heading2, List, ListOrdered, Quote, Share2 } from "lucide-react";
+import { BookOpenText, CalendarDays, Check, ChevronDown, Clock3, Loader2, PencilLine, Plus, Bold, Italic, Heading2, List, ListOrdered, Quote, Share2 } from "lucide-react";
 import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from "@tiptap/react";
 import Heading from "@tiptap/extension-heading";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
 import { initializeContent, processContentChange } from "~/lib/date-history";
-import { ShareNoteModal } from "./share-note-modal";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -17,6 +17,18 @@ import {
   ContextMenuSeparator,
   ContextMenuLabel,
 } from "~/components/ui/context-menu";
+import { AsyncStatusMessage } from "~/components/ui/async-status-message";
+
+const WORKSPACE_LOADING_MESSAGES = [
+  "Laying out your writing space...",
+  "Your notes are taking a little longer to arrive. Please keep this page open.",
+  "If your shelf still does not appear, refresh the page and try once more.",
+] as const;
+
+const ShareNoteModal = dynamic(
+  () => import("./share-note-modal").then((module) => module.ShareNoteModal),
+  { ssr: false },
+);
 
 const ReadonlyDateHeading = Heading.extend({
   addKeyboardShortcuts() {
@@ -65,8 +77,9 @@ const ReadonlyDateHeading = Heading.extend({
             contentEditable={false}
           >
             <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
-            <span className="text-xs font-bold font-mono text-[#8a8070] tracking-widest uppercase">
-              {text}
+            <span className="flex items-center gap-1.5 text-xs font-bold font-mono text-[#8a8070] tracking-widest uppercase">
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+              {text.replace("📅", "").trim()}
             </span>
             <div className="h-px bg-[#8a8070] flex-1 opacity-50"></div>
           </NodeViewWrapper>
@@ -75,12 +88,14 @@ const ReadonlyDateHeading = Heading.extend({
       
       // Check if it's an edit marker: starts with pencil emoji
       if (text.startsWith("✏️ diedit:")) {
+        const editedDate = text.replace(/^✏️ diedit:\s*/, "");
         return (
           <NodeViewWrapper
             as="h6"
             contentEditable={false}
           >
-            {text}
+            <PencilLine className="mr-1.5 h-3 w-3" aria-hidden="true" />
+            <span>Edited: {editedDate}</span>
           </NodeViewWrapper>
         );
       }
@@ -104,6 +119,10 @@ interface NotepadContainerProps {
   createdAt?: Date | null;
   onTitleChange: (title: string) => void;
   onContentChange: (content: string) => void;
+  onCreateNote?: () => void;
+  isCreatingNote?: boolean;
+  isLoading?: boolean;
+  hasUnsavedChanges?: boolean;
   isSaving?: boolean;
   authorName?: string | null;
   className?: string;
@@ -112,7 +131,7 @@ interface NotepadContainerProps {
 function formatDate(date: Date | null | undefined): string {
   if (!date) return "";
   const d = new Date(date);
-  return d.toLocaleDateString("id-ID", {
+  return d.toLocaleDateString("en-US", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -155,7 +174,9 @@ function TitleEditor({ value, onChange }: { value: string; onChange: (v: string)
           maxHeight: focused ? "none" : `${MAX_COLLAPSED_HEIGHT}px`,
         }}
         value={value}
+        maxLength={500}
         rows={1}
+        aria-label="Note title"
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -170,9 +191,10 @@ function TitleEditor({ value, onChange }: { value: string; onChange: (v: string)
             setFocused(true);
             ref.current?.focus();
           }}
-          className="typewriter-text mt-1 text-xs text-[#8a8070] opacity-60 hover:opacity-100 transition-opacity cursor-pointer pl-[75px]"
+          className="typewriter-text mt-1 flex items-center gap-1 pl-[75px] text-xs text-[#6f675a] opacity-80 transition-opacity hover:opacity-100"
         >
-          ▼ Show full title
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+          Show full title
         </button>
       )}
     </div>
@@ -283,7 +305,11 @@ export function NotepadContainer({
   createdAt,
   onTitleChange,
   onContentChange,
-  isSaving,
+  onCreateNote,
+  isCreatingNote = false,
+  isLoading = false,
+  hasUnsavedChanges = false,
+  isSaving = false,
   authorName,
   className,
 }: NotepadContainerProps) {
@@ -331,6 +357,9 @@ export function NotepadContainer({
     editorProps: {
       attributes: {
         class: "notepad-editor",
+        role: "textbox",
+        "aria-label": "Note content",
+        "aria-multiline": "true",
       },
     },
     onCreate: ({ editor: e }) => {
@@ -397,6 +426,29 @@ export function NotepadContainer({
     setIsShareModalOpen(true);
   };
 
+  if (isLoading) {
+    return (
+      <div className="notepad-with-toolbar w-full">
+        <div
+          className={cn(
+            "paper-container relative mx-auto flex min-h-[60vh] w-full max-w-2xl items-center justify-center overflow-hidden md:min-h-[800px]",
+            className,
+          )}
+          style={{ backgroundColor: "var(--paper-bg)" }}
+        >
+          <div className="w-full max-w-sm px-5">
+            <AsyncStatusMessage
+              active
+              appearanceDelayMs={0}
+              messages={WORKSPACE_LOADING_MESSAGES}
+              className="border-[#746d61]/20 bg-[#746d61]/5 text-sm text-[#655d51] [&>svg]:text-[#746d61]"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!noteId) {
     return (
       <div className="notepad-with-toolbar w-full">
@@ -407,10 +459,29 @@ export function NotepadContainer({
           )}
           style={{ backgroundColor: "var(--paper-bg)" }}
         >
-          <div className="text-center px-4">
-            <p className="typewriter-text text-base md:text-xl opacity-50">
-              Select a note or create a new one
+          <div className="max-w-sm px-5 text-center">
+            <BookOpenText className="mx-auto h-8 w-8 text-[#746d61]" aria-hidden="true" />
+            <h2 className="mt-3 font-serif text-xl font-semibold text-[#40382e]">
+              A quiet page is ready.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#655d51]">
+              Choose a note from the sidebar, or begin with a fresh thought.
             </p>
+            {onCreateNote && (
+              <button
+                type="button"
+                onClick={onCreateNote}
+                disabled={isCreatingNote}
+                className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#4a3728] px-4 py-2.5 font-serif text-sm font-semibold text-[#f3eadb] shadow-sm transition-colors hover:bg-[#5c4033] disabled:opacity-60"
+              >
+                {isCreatingNote ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isCreatingNote ? "Preparing your note..." : "Create a new note"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -429,26 +500,34 @@ export function NotepadContainer({
         )}
         style={{ backgroundColor: "var(--paper-bg)" }}
       >
-        {/* Saving indicator */}
-        {isSaving && (
-          <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2 rounded bg-white/80 px-2 py-1 text-xs md:text-sm shadow">
-            <Loader2 className="h-3 w-3 md:h-4 md:w-4 animate-spin text-gray-500" />
-            <span className="text-gray-600">Saving...</span>
-          </div>
-        )}
-
         {/* Red margin line — hidden on very small screens */}
         <div className="absolute left-[40px] sm:left-[59px] top-0 h-full w-[2px] bg-[#e8b4b4] z-1" />
 
         {/* Paper header area */}
         <div className="relative pt-4 pb-3 md:pt-5 md:pb-4" style={{ backgroundColor: "var(--paper-bg)" }}>
-          {createdAt && (
-            <div className="mb-1 text-right pr-3 md:pr-5">
-              <span className="typewriter-text text-[10px] md:text-xs text-[#8a8070]">
+          <div className="mb-1 flex min-h-7 items-center justify-end gap-2 pl-[50px] pr-3 sm:pl-[75px] md:pr-5">
+            {createdAt && (
+              <span className="typewriter-text hidden text-[10px] text-[#8a8070] sm:inline md:text-xs">
                 Date: {formatDate(createdAt)}
               </span>
+            )}
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#746d61]/20 bg-white/90 px-2.5 py-1 text-xs text-[#655d51] shadow-sm"
+            >
+              {isSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : hasUnsavedChanges ? (
+                <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              <span>
+                {isSaving ? "Saving..." : hasUnsavedChanges ? "Saving shortly..." : "All changes saved"}
+              </span>
             </div>
-          )}
+          </div>
           <TitleEditor value={title} onChange={onTitleChange} />
         </div>
 

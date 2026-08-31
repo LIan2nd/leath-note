@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Send, X, Loader2, Sparkles, RotateCcw, Settings } from "lucide-react";
+import { Bot, Send, X, Sparkles, RotateCcw, Settings } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "~/lib/utils";
@@ -14,19 +14,82 @@ import {
 } from "~/lib/ai-providers";
 import { AiSettingsModal } from "./ai-settings-modal";
 import { api } from "~/trpc/react";
+import { useModalFocus } from "~/hooks/use-modal-focus";
+import { ActionErrorMessage } from "~/components/ui/action-error-message";
+import { AsyncStatusMessage } from "~/components/ui/async-status-message";
+
+const CHAT_HISTORY_LOADING_MESSAGES = [
+  "Opening this note's conversation...",
+  "Your conversation is taking a little longer to arrive. The note is still ready beside you.",
+  "If it stays here, close and reopen the AI panel or refresh the page.",
+] as const;
+
+const AI_RESPONSE_LOADING_MESSAGES = [
+  "Reading your note and gathering a thoughtful response...",
+  "This answer needs a little more time. You can pause it whenever you like.",
+  "You can stop this response, then check the provider in AI settings before trying again.",
+] as const;
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
+class ChatResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ChatResponseError";
+  }
+}
+
+function getChatErrorMessage(error: unknown, providerLabel: string): string {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+  const status = error instanceof ChatResponseError ? error.status : null;
+
+  if (status === 404 || normalized.includes("note not found")) {
+    return "This note is no longer available to the chat. Return to the note list and choose another note.";
+  }
+  if (status === 429 || normalized.includes("rate limit")) {
+    return `${providerLabel} is receiving too many requests right now. Give it a quiet moment, then try again.`;
+  }
+  if (
+    normalized.includes("api key") ||
+    normalized.includes("invalid_api_key") ||
+    normalized.includes("authentication_error")
+  ) {
+    return `${providerLabel} needs a valid API key. Open AI settings, check the key, then try again.`;
+  }
+  if (status === 401 && normalized.trim() === "unauthorized") {
+    return "Your sign-in has expired. Refresh the page and sign in again before sending another message.";
+  }
+  if (status === 401 || status === 403) {
+    return `${providerLabel} rejected its credentials. Open AI settings, check the API key, then try again.`;
+  }
+  if (normalized.includes("ollama")) {
+    return "Ollama did not respond. Make sure it is running and that its address in AI settings is reachable.";
+  }
+  if (
+    status === 500 ||
+    normalized.includes("internal server") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("network") ||
+    normalized.includes("timeout")
+  ) {
+    return `${providerLabel} did not respond in time. Check the provider status or connection, then try again.`;
+  }
+
+  return `${providerLabel} could not finish this response. Check its settings and availability, then try again.`;
+}
+
 interface AiChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  noteContent: string;
   noteTitle: string;
   noteId: string | null;
-  userName?: string | null;
 }
 
 /**
@@ -34,15 +97,19 @@ interface AiChatPanelProps {
  * Streams continue even when user switches notes.
  * Key = noteId, Value = { abort, onToken callbacks }
  */
-const activeStreams = new Map<string, { abort: AbortController; content: string }>();
+interface ActiveStream {
+  abort: AbortController;
+  content: string;
+  discardOutput: boolean;
+}
+
+const activeStreams = new Map<string, ActiveStream>();
 
 export function AiChatPanel({
   isOpen,
   onClose,
-  noteContent,
   noteTitle,
   noteId,
-  userName,
 }: AiChatPanelProps) {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
@@ -50,11 +117,11 @@ export function AiChatPanel({
   const [error, setError] = React.useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [showClearConfirm, setShowClearConfirm] = React.useState(false);
+  const clearDialogRef = useModalFocus(showClearConfirm);
   // Initialize with env defaults (SSR-safe), then hydrate from localStorage
-  const [aiSettings, setAiSettings] = React.useState<AiSettings>(() => {
-    if (typeof window === "undefined") return loadAiSettings();
-    return loadAiSettings();
-  });
+  const [aiSettings, setAiSettings] = React.useState<AiSettings>(() =>
+    loadAiSettings(),
+  );
   const [hydrated, setHydrated] = React.useState(false);
 
   // Hydrate settings from localStorage after mount to avoid SSR mismatch
@@ -63,6 +130,17 @@ export function AiChatPanel({
     setHydrated(true);
   }, []);
 
+  React.useEffect(
+    () => () => {
+      for (const stream of activeStreams.values()) {
+        stream.discardOutput = true;
+        stream.abort.abort();
+      }
+      activeStreams.clear();
+    },
+    [],
+  );
+
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -70,10 +148,19 @@ export function AiChatPanel({
   const utils = api.useUtils();
 
   // Load chat history from DB when noteId changes
-  const { data: savedMessages, isLoading: isLoadingChat } = api.chat.getByNoteId.useQuery(
+  const {
+    data: savedMessages,
+    isLoading: isLoadingChat,
+    isError: hasChatLoadError,
+    refetch: refetchChat,
+  } = api.chat.getByNoteId.useQuery(
     { noteId: noteId! },
     { enabled: !!noteId, refetchInterval: isStreaming ? 2000 : false }
   );
+
+  React.useEffect(() => {
+    setError(null);
+  }, [noteId]);
 
   // Sync DB messages into local state when savedMessages changes
   React.useEffect(() => {
@@ -98,11 +185,11 @@ export function AiChatPanel({
       } else {
         setMessages(dbMessages);
       }
+
     }
 
     // Check if there's an active stream for the current note
     setIsStreaming(activeStreams.has(noteId));
-    setError(null);
   }, [savedMessages, noteId]);
 
   // Ref to always have current noteId (avoids stale closures in async functions)
@@ -112,8 +199,14 @@ export function AiChatPanel({
   // tRPC mutations
   const addMessageMutation = api.chat.addMessage.useMutation();
   const clearChatMutation = api.chat.clearByNoteId.useMutation({
-    onSuccess: () => {
-      if (noteId) void utils.chat.getByNoteId.invalidate({ noteId });
+    onSuccess: (_data, variables) => {
+      void utils.chat.getByNoteId.invalidate({ noteId: variables.noteId });
+    },
+    onError: (_error, variables) => {
+      if (currentNoteIdRef.current === variables.noteId) {
+        setError("The conversation could not be cleared. Your previous messages are being restored; please try again.");
+      }
+      void utils.chat.getByNoteId.invalidate({ noteId: variables.noteId });
     },
   });
 
@@ -124,7 +217,7 @@ export function AiChatPanel({
 
   // Focus input when panel opens
   React.useEffect(() => {
-    if (isOpen) setTimeout(() => inputRef.current?.focus(), 300);
+    if (isOpen) setTimeout(() => inputRef.current?.focus(), 150);
   }, [isOpen]);
 
   // Poll for stream updates when viewing a note with active stream
@@ -170,12 +263,12 @@ export function AiChatPanel({
     if (activeStreams.has(noteId)) return;
 
     if (needsSetup) {
-      setError("Please configure your AI provider first. Click ⚙️ to set up.");
+      setError("Open AI settings to finish setting up your provider.");
       return;
     }
 
     if (provider?.requiresApiKey && !aiSettings.apiKey) {
-      setError(`${provider.label} requires an API key. Click ⚙️ to configure.`);
+      setError(`${provider.label} requires an API key. Open AI settings to add it.`);
       return;
     }
 
@@ -186,23 +279,52 @@ export function AiChatPanel({
     setMessages((prev) => [...prev, { role: "user", content: trimmed }, { role: "assistant", content: "" }]);
     setIsStreaming(true);
 
-    // Capture everything needed before any async work (noteId could change)
+    // Capture everything needed before async work (noteId could change).
     const targetNoteId = noteId;
     const chatHistory = [...messages];
-    const currentNoteContent = noteContent;
     const currentSettings = { ...aiSettings };
+    const streamState: ActiveStream = {
+      abort: new AbortController(),
+      content: "",
+      discardOutput: false,
+    };
+    activeStreams.set(targetNoteId, streamState);
 
-    // Save user message to DB (fire-and-forget, don't block stream start)
-    addMessageMutation.mutate({ noteId: targetNoteId, role: "user", content: trimmed });
+    try {
+      // Persist first so assistant messages can never overtake their user prompt.
+      await addMessageMutation.mutateAsync({
+        noteId: targetNoteId,
+        role: "user",
+        content: trimmed,
+      });
+    } catch {
+      activeStreams.delete(targetNoteId);
+      setIsStreaming(false);
+      setError("Could not save your message. Please try again.");
+      setInput(trimmed);
+      setMessages((previous) => previous.slice(0, -2));
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
 
-    // Start stream immediately — don't wait for DB save
+    // A clear action may have happened while the message was being saved.
+    if (streamState.discardOutput) {
+      try {
+        await clearChatMutation.mutateAsync({ noteId: targetNoteId });
+      } catch {
+        // The regular mutation error handler will refresh auth state if needed.
+      }
+      activeStreams.delete(targetNoteId);
+      if (currentNoteIdRef.current === targetNoteId) setIsStreaming(false);
+      return;
+    }
+
     void startBackgroundStream(
       targetNoteId,
       trimmed,
       chatHistory,
-      noteTitle,
-      currentNoteContent,
-      currentSettings
+      currentSettings,
+      streamState,
     );
   };
 
@@ -210,13 +332,9 @@ export function AiChatPanel({
     targetNoteId: string,
     userPrompt: string,
     chatHistory: Message[],
-    title: string,
-    content: string,
-    settings: AiSettings
+    settings: AiSettings,
+    streamState: ActiveStream,
   ) => {
-    const abortController = new AbortController();
-    activeStreams.set(targetNoteId, { abort: abortController, content: "" });
-
     if (currentNoteIdRef.current === targetNoteId) setIsStreaming(true);
 
     let fullResponse = "";
@@ -225,13 +343,11 @@ export function AiChatPanel({
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: abortController.signal,
+        signal: streamState.abort.signal,
         body: JSON.stringify({
-          noteTitle: title,
-          noteContent: content,
+          noteId: targetNoteId,
           userPrompt,
           chatHistory,
-          userName: userName ?? undefined,
           providerId: settings.providerId,
           model: settings.model,
           apiKey: settings.apiKey,
@@ -241,8 +357,14 @@ export function AiChatPanel({
       });
 
       if (!response.ok) {
-        const errData = (await response.json()) as { error?: string };
-        throw new Error(errData.error ?? "Failed to get response");
+        let errorMessage = "The AI provider returned an error";
+        try {
+          const errData = (await response.json()) as { error?: string };
+          errorMessage = errData.error ?? errorMessage;
+        } catch {
+          // Some providers return plain text or an empty body on failure.
+        }
+        throw new ChatResponseError(errorMessage, response.status);
       }
 
       const reader = response.body?.getReader();
@@ -263,36 +385,68 @@ export function AiChatPanel({
           if (!line.startsWith("data: ")) continue;
           const data = line.slice(6);
           if (data === "[DONE]") break;
+          let parsed: { content?: string; error?: string } | null = null;
           try {
-            const parsed = JSON.parse(data) as { content?: string };
-            if (parsed.content) {
-              fullResponse += parsed.content;
-              const stream = activeStreams.get(targetNoteId);
-              if (stream) stream.content = fullResponse;
-            }
-          } catch { /* skip */ }
+            parsed = JSON.parse(data) as { content?: string; error?: string };
+          } catch {
+            continue;
+          }
+          if (parsed.error) throw new Error(parsed.error);
+          if (parsed.content) {
+            fullResponse += parsed.content;
+            const stream = activeStreams.get(targetNoteId);
+            if (stream) stream.content = fullResponse;
+          }
         }
       }
 
+      if (!fullResponse && !streamState.discardOutput) {
+        throw new Error("The provider returned an empty response");
+      }
+
       // Save complete response to DB
-      if (fullResponse) {
-        addMessageMutation.mutate({ noteId: targetNoteId, role: "assistant", content: fullResponse });
+      if (fullResponse && !streamState.discardOutput) {
+        addMessageMutation.mutate(
+          { noteId: targetNoteId, role: "assistant", content: fullResponse },
+          {
+            onError: () => {
+              if (currentNoteIdRef.current === targetNoteId) {
+                setError("The answer is visible, but it could not be saved. Copy anything important, then try again.");
+              }
+            },
+          },
+        );
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        if (fullResponse) {
-          addMessageMutation.mutate({ noteId: targetNoteId, role: "assistant", content: fullResponse });
+        if (fullResponse && !streamState.discardOutput) {
+          addMessageMutation.mutate(
+            { noteId: targetNoteId, role: "assistant", content: fullResponse },
+            {
+              onError: () => {
+                if (currentNoteIdRef.current === targetNoteId) {
+                  setError("The partial answer is visible, but it could not be saved. Copy anything important before leaving.");
+                }
+              },
+            },
+          );
         }
       } else {
         if (currentNoteIdRef.current === targetNoteId) {
-          setError(err instanceof Error ? err.message : "Something went wrong");
+          const configuredProvider = settings.providerId
+            ? getProvider(settings.providerId)
+            : null;
+          const providerLabel = configuredProvider?.label ?? "The AI provider";
+          setError(getChatErrorMessage(err, providerLabel));
           setMessages((prev) =>
             prev[prev.length - 1]?.content === "" ? prev.slice(0, -1) : prev
           );
         }
       }
     } finally {
-      activeStreams.delete(targetNoteId);
+      if (activeStreams.get(targetNoteId) === streamState) {
+        activeStreams.delete(targetNoteId);
+      }
       // Always invalidate the target note's chat cache so it loads from DB next time
       void utils.chat.getByNoteId.invalidate({ noteId: targetNoteId });
       // If user is still viewing this note, update streaming state
@@ -319,7 +473,10 @@ export function AiChatPanel({
     if (noteId) {
       // Also abort any active stream for this note
       const stream = activeStreams.get(noteId);
-      if (stream) stream.abort.abort();
+      if (stream) {
+        stream.discardOutput = true;
+        stream.abort.abort();
+      }
       clearChatMutation.mutate({ noteId });
     }
   };
@@ -370,14 +527,21 @@ export function AiChatPanel({
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowClearConfirm(false)}
           />
-          <div className="relative rounded-lg border border-[#5a4a3a] bg-[#2a2218] p-5 shadow-xl max-w-xs w-full">
-            <h3 className="text-sm font-bold text-[#d4c5a9] mb-2">Clear chat history?</h3>
+          <div
+            ref={clearDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="clear-chat-title"
+            className="relative w-full max-w-xs rounded-lg border border-[#5a4a3a] bg-[#2a2218] p-5 shadow-xl"
+          >
+            <h3 id="clear-chat-title" className="text-sm font-bold text-[#d4c5a9] mb-2">Clear chat history?</h3>
             <p className="text-xs text-[#c8b89a] opacity-70 mb-4">
               This will permanently delete all messages in this conversation. This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowClearConfirm(false)}
+                autoFocus
                 className="btn-skeuomorphic px-3 py-1.5 text-xs"
               >
                 Cancel
@@ -394,9 +558,11 @@ export function AiChatPanel({
       )}
 
       <div
+        aria-hidden={!isOpen}
+        inert={!isOpen}
         className={cn(
-          "chat-panel fixed bottom-0 right-0 z-50 flex flex-col transition-all duration-300 ease-in-out",
-          "h-[540px] w-full md:w-[380px]",
+          "chat-panel fixed bottom-0 right-0 z-50 flex flex-col transition-all duration-150 ease-out",
+          "h-[min(540px,100dvh)] w-full md:w-[380px]",
           isOpen
             ? "translate-y-0 opacity-100"
             : "translate-y-full opacity-0 pointer-events-none"
@@ -454,19 +620,44 @@ export function AiChatPanel({
             onClick={() => setSettingsOpen(true)}
             className="chat-warning-banner flex items-center gap-2 px-4 py-2 text-left text-xs w-full"
           >
-            <span>⚙️</span>
+            <Settings className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
               AI is not configured yet.{" "}
-              <span className="underline">Click here to set up your AI provider →</span>
+              <span className="underline">Open settings to choose your provider</span>
             </span>
           </button>
         )}
 
         {/* Messages Area */}
-        <div className="chat-messages flex-1 overflow-y-auto p-3 space-y-3">
+        <div
+          className="chat-messages flex-1 space-y-3 overflow-y-auto p-3"
+          aria-busy={isLoadingChat || hasActiveStream}
+        >
           {isLoadingChat ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="h-5 w-5 animate-spin text-[#c8b89a] opacity-60" />
+            <div className="flex h-full items-center justify-center px-3">
+              <AsyncStatusMessage
+                active
+                appearanceDelayMs={0}
+                messages={CHAT_HISTORY_LOADING_MESSAGES}
+                className="w-full max-w-xs"
+              />
+            </div>
+          ) : hasChatLoadError ? (
+            <div className="flex h-full items-center justify-center px-3">
+              <ActionErrorMessage
+                title="The conversation could not be opened"
+                message="The server did not return this note's chat history. Check your connection, then try again."
+                className="w-full max-w-xs text-xs"
+                action={(
+                  <button
+                    type="button"
+                    onClick={() => void refetchChat()}
+                    className="btn-skeuomorphic px-3 py-1.5 text-xs"
+                  >
+                    Try again
+                  </button>
+                )}
+              />
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 opacity-60">
@@ -478,9 +669,9 @@ export function AiChatPanel({
                   </p>
                   <button
                     onClick={() => setSettingsOpen(true)}
-                    className="btn-skeuomorphic px-4 py-2 text-xs mt-2"
+                    className="btn-skeuomorphic mt-2 flex items-center gap-2 px-4 py-2 text-xs"
                   >
-                    ⚙️ Configure AI Provider
+                    <Settings className="h-4 w-4" aria-hidden="true" /> Configure AI Provider
                   </button>
                 </>
               ) : (
@@ -533,10 +724,12 @@ export function AiChatPanel({
                       msg.content
                     )
                   ) : (
-                    <span className="flex items-center gap-1 opacity-60">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      <span className="typewriter-text text-xs">Thinking...</span>
-                    </span>
+                    <AsyncStatusMessage
+                      active
+                      appearanceDelayMs={0}
+                      messages={AI_RESPONSE_LOADING_MESSAGES}
+                      className="border-0 bg-transparent p-0 text-[#c8b89a]"
+                    />
                   )}
                 </div>
               </div>
@@ -544,7 +737,11 @@ export function AiChatPanel({
           )}
 
           {error && (
-            <div className="chat-error rounded px-3 py-2 text-xs">⚠️ {error}</div>
+            <ActionErrorMessage
+              title="AI needs your attention"
+              message={error}
+              className="text-xs"
+            />
           )}
 
           <div ref={messagesEndRef} />

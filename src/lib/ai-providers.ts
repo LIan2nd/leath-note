@@ -125,6 +125,10 @@ export const PROVIDERS: ProviderConfig[] = [
 
 export const DEFAULT_PROVIDER_ID: ProviderId | null = null;
 
+function isProviderId(value: unknown): value is ProviderId {
+  return typeof value === "string" && PROVIDERS.some((provider) => provider.id === value);
+}
+
 export function getProvider(id: ProviderId): ProviderConfig {
   return PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0]!;
 }
@@ -143,19 +147,39 @@ export interface AiSettings {
  * These are the server-operator defaults — user's localStorage overrides them.
  */
 function getEnvDefaults(): AiSettings {
-  const providerId =
-    (process.env.NEXT_PUBLIC_AI_PROVIDER as ProviderId | undefined) ?? null;
+  const rawProviderId = process.env.NEXT_PUBLIC_AI_PROVIDER;
+  const providerId = isProviderId(rawProviderId) ? rawProviderId : null;
   const provider = providerId ? getProvider(providerId) : null;
   return {
     providerId,
     model: process.env.NEXT_PUBLIC_AI_MODEL ?? provider?.defaultModel ?? "",
-    apiKey: process.env.NEXT_PUBLIC_AI_API_KEY ?? "",
+    // API keys must be entered by the user. Never bake an operator secret into
+    // a NEXT_PUBLIC_ variable because Next.js exposes it to every browser.
+    apiKey: "",
     ollamaHost: process.env.NEXT_PUBLIC_OLLAMA_HOST ?? "http://localhost:11434",
     customBaseUrl: process.env.NEXT_PUBLIC_AI_BASE_URL ?? provider?.defaultBaseUrl ?? "",
   };
 }
 
 const STORAGE_KEY = "leath-notes:ai-settings";
+
+function normalizeSettings(value: Partial<AiSettings>, fallback: AiSettings): AiSettings {
+  const providerId = isProviderId(value.providerId) ? value.providerId : fallback.providerId;
+  const provider = providerId ? getProvider(providerId) : null;
+  const stringOrFallback = (candidate: unknown, defaultValue: string) =>
+    typeof candidate === "string" ? candidate : defaultValue;
+
+  return {
+    providerId,
+    model: stringOrFallback(value.model, provider?.defaultModel ?? fallback.model),
+    apiKey: stringOrFallback(value.apiKey, fallback.apiKey),
+    ollamaHost: stringOrFallback(value.ollamaHost, fallback.ollamaHost),
+    customBaseUrl: stringOrFallback(
+      value.customBaseUrl,
+      provider?.defaultBaseUrl ?? fallback.customBaseUrl,
+    ),
+  };
+}
 
 /**
  * Priority order:
@@ -172,7 +196,7 @@ export function loadAiSettings(): AiSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return envDefaults;
     // Merge: localStorage wins over env defaults
-    return { ...envDefaults, ...(JSON.parse(raw) as Partial<AiSettings>) };
+    return normalizeSettings(JSON.parse(raw) as Partial<AiSettings>, envDefaults);
   } catch {
     return envDefaults;
   }
@@ -180,7 +204,7 @@ export function loadAiSettings(): AiSettings {
 
 export function saveAiSettings(settings: AiSettings): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeSettings(settings, getEnvDefaults())));
 }
 
 /**
@@ -189,7 +213,11 @@ export function saveAiSettings(settings: AiSettings): void {
  */
 export function isUsingEnvDefaults(): boolean {
   if (typeof window === "undefined") return true;
-  return localStorage.getItem(STORAGE_KEY) === null;
+  try {
+    return localStorage.getItem(STORAGE_KEY) === null;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -200,6 +228,9 @@ export function isUsingEnvDefaults(): boolean {
 export function isAiConfigured(settings: AiSettings): boolean {
   if (!settings.providerId) return false;
   const provider = getProvider(settings.providerId);
+  if (!settings.model.trim()) return false;
   if (provider.requiresApiKey && !settings.apiKey) return false;
+  if (provider.requiresBaseUrl && !settings.customBaseUrl.trim()) return false;
+  if (provider.id === "ollama" && !settings.ollamaHost.trim()) return false;
   return true;
 }
